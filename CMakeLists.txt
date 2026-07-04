@@ -16,6 +16,11 @@ if(CHIMERA_BUILD_SDK_EXAMPLES)
   add_subdirectory(sdk)
 endif()
 
+option(CHIMERA_BUILD_UI "Build UI library and desktop app" ON)
+if(CHIMERA_BUILD_UI)
+  add_subdirectory(software/chimera-ui)
+endif()
+
 add_subdirectory(software/apps)
 
 if(CHIMERA_BUILD_TESTS)

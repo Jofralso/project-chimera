@@ -5,6 +5,7 @@
 #include <chimera/nodes/sampler_node.h>
 #include <chimera/nodes/drum_node.h>
 #include <chimera/nodes/synth_node.h>
+#include <chimera/nodes/step_sequencer.h>
 #include <chimera/nodes/master_output.h>
 #include <chimera/nodes/audio_io.h>
 #include <chimera/session.h>
@@ -30,6 +31,7 @@ int main(int argc, char** argv) {
     float drum_bpm = 120.0f;
     std::vector<std::string> drum_samples;
     bool synth_mode = false;
+    bool seq_mode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -54,12 +56,16 @@ int main(int argc, char** argv) {
             drum_samples.push_back(argv[++i]);
         } else if (arg == "--synth") {
             synth_mode = true;
+        } else if (arg == "--seq") {
+            seq_mode = true;
         } else if (arg == "--device" && i + 1 < argc) {
             device = argv[++i];
         } else if (arg == "--alsa") {
             backend = "alsa";
         } else if (arg == "--dummy") {
             backend = "dummy";
+        } else if (arg == "--jack") {
+            backend = "jack";
         } else if (arg == "-h" || arg == "--help") {
             std::printf("Usage: chimera-play [options]\n");
             std::printf("  -d SEC      Duration in seconds (default: 3.0)\n");
@@ -72,8 +78,10 @@ int main(int argc, char** argv) {
             std::printf("  --drum-bpm  BPM for drum sequencer (default: 120)\n");
             std::printf("  --drum-sample FILE  Add drum sample (repeatable)\n");
             std::printf("  --synth     Subtractive synth mode\n");
+            std::printf("  --seq       Sequencer mode (drums + synth)\n");
             std::printf("  --device D  PCM device name (default: default)\n");
             std::printf("  --alsa      Force ALSA backend\n");
+            std::printf("  --jack      Force JACK backend (requires jackd)\n");
             std::printf("  --dummy     Force dummy backend\n");
             return 0;
         }
@@ -171,6 +179,63 @@ int main(int argc, char** argv) {
         engine.set_transport(chimera::TransportState::Playing);
 
         CHIMERA_INFO("Synth: 8 voices, saw wave, filter, ADSR");
+    } else if (seq_mode) {
+        auto master = std::make_unique<chimera::MasterOutputNode>(channels);
+        chimera::NodeID master_id = engine.add_node(std::move(master));
+
+        auto drum = std::make_unique<chimera::DrumNode>(3);
+        auto* drum_ptr = drum.get();
+        chimera::NodeID drum_id = engine.add_node(std::move(drum));
+        for (uint32_t c = 0; c < channels; ++c)
+            engine.connect_nodes(drum_id, c % 2, master_id, c);
+
+        auto synth = std::make_unique<chimera::SynthNode>(6);
+        auto* synth_ptr = synth.get();
+        chimera::NodeID synth_id = engine.add_node(std::move(synth));
+        for (uint32_t c = 0; c < channels; ++c)
+            engine.connect_nodes(synth_id, c % 2, master_id, c);
+
+        synth_ptr->params().waveform = chimera::Waveform::Square;
+        synth_ptr->params().filter_cutoff = 0.5f;
+        synth_ptr->params().filter_resonance = 0.4f;
+        synth_ptr->params().filter_env_amount = 0.5f;
+        synth_ptr->params().attack_ms = 5.0f;
+        synth_ptr->params().decay_ms = 100.0f;
+        synth_ptr->params().sustain = 0.4f;
+        synth_ptr->params().release_ms = 80.0f;
+
+        // Demo: 4 tracks (3 drum + 1 bass synth)
+        auto& seq = engine.sequencer();
+        seq.set_bpm(130);
+        seq.set_steps_per_beat(4);
+        seq.set_num_steps(16);
+
+        seq.set_track_type(0, chimera::TrackType::Trigger); // kick
+        seq.set_track_type(1, chimera::TrackType::Trigger); // snare
+        seq.set_track_type(2, chimera::TrackType::Trigger); // hihat
+        seq.set_track_type(3, chimera::TrackType::Note);    // bass
+
+        // Kick: 1, 9
+        seq.set_step(0, 0, true, 1.0f);
+        seq.set_step(0, 8, true, 0.9f);
+        // Snare: 5, 13
+        seq.set_step(1, 4, true, 0.8f);
+        seq.set_step(1, 12, true, 0.7f);
+        // Hihat: every other
+        for (uint32_t s = 0; s < 16; s += 2)
+            seq.set_step(2, s, true, 0.5f);
+        // Bass line (notes)
+        uint8_t bass_notes[] = {36, 36, 43, 36, 38, 38, 45, 38,
+                                36, 36, 43, 36, 39, 39, 43, 36};
+        for (uint32_t s = 0; s < 16; ++s)
+            seq.set_step(3, s, true, 0.8f, 1.0f, bass_notes[s], 0.75f);
+
+        seq.set_track_type(3, chimera::TrackType::Note);
+        seq.set_sample_rate(48000.0);
+
+        engine.enable_sequencer(true);
+        engine.set_transport(chimera::TransportState::Playing);
+        CHIMERA_INFO("Sequencer: 3 drum tracks + 1 bass, 130 BPM");
     } else if (!session_path.empty()) {
         chimera::Session session;
         if (!session.load(session_path)) {

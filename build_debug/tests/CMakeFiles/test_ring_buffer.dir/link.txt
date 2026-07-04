@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/test_ring_buffer.dir/test_ring_buffer.cpp.o -o test_ring_buffer  ../software/audio-engine/libchimera_audio_engine.a /usr/lib/x86_64-linux-gnu/libdl.a 

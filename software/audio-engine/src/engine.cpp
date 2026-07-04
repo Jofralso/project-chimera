@@ -1,5 +1,6 @@
 #include "chimera/engine.h"
 #include "chimera/backends/dummy_backend.h"
+#include "chimera/backends/jack_backend.h"
 #include "chimera/logger.h"
 
 #ifdef CHIMERA_HAS_ALSA
@@ -7,6 +8,7 @@
 #endif
 
 #include "chimera/nodes/drum_node.h"
+#include "chimera/nodes/synth_node.h"
 #include <cstring>
 #include <mutex>
 
@@ -235,16 +237,28 @@ void Engine::audio_callback(float** outputs, float** inputs, size_t num_frames) 
     std::lock_guard<std::mutex> lock(graph_mutex_);
     apply_pending_mutations();
 
-    // Advance step sequencer and push triggers to DrumNode
+    // Advance step sequencer and route events to DrumNode/SynthNode
     if (sequencer_enabled_ && transport_ == TransportState::Playing) {
         transport_position_ += num_frames;
-        auto triggers = sequencer_.advance(transport_position_, config_.sample_rate);
-        if (!triggers.empty()) {
+        auto events = sequencer_.advance(transport_position_, config_.sample_rate);
+        if (!events.empty()) {
             for (auto& [id, node] : graph_.all_nodes()) {
                 if (node->node_class() == "builtin.drum") {
                     auto* drum = static_cast<DrumNode*>(node.get());
-                    for (auto& t : triggers) {
-                        drum->trigger(t.pad, t.velocity);
+                    for (auto& e : events) {
+                        if (e.type == SequencerEvent::Type::Trigger) {
+                            drum->trigger(e.track, e.velocity);
+                        }
+                    }
+                }
+                if (node->node_class() == "builtin.synth") {
+                    auto* synth = static_cast<SynthNode*>(node.get());
+                    for (auto& e : events) {
+                        if (e.type == SequencerEvent::Type::NoteOn) {
+                            synth->note_on(e.note, e.velocity);
+                        } else if (e.type == SequencerEvent::Type::NoteOff) {
+                            synth->note_off(e.note);
+                        }
                     }
                 }
             }
@@ -290,6 +304,9 @@ void Engine::audio_callback(float** outputs, float** inputs, size_t num_frames) 
 std::unique_ptr<AudioBackend> Engine::create_backend(const std::string& type) {
     if (type == "dummy") {
         return std::make_unique<DummyBackend>();
+    }
+    if (type == "jack") {
+        return std::make_unique<JackBackend>();
     }
 #ifdef CHIMERA_HAS_ALSA
     if (type == "alsa") {

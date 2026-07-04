@@ -21,6 +21,7 @@ set(CHIMERA_AUDIO_ENGINE_SOURCES
   src/nodes/step_sequencer.cpp
   src/nodes/synth_node.cpp
   src/nodes/test_tone.cpp
+  src/backends/jack_backend.cpp
 )
 
 add_library(chimera_audio_engine STATIC

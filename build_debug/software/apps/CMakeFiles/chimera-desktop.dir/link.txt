@@ -1,0 +1,1 @@
+/usr/bin/c++ -g "CMakeFiles/chimera-desktop.dir/chimera-desktop.cpp.o" -o chimera-desktop  ../chimera-ui/libchimera_ui.a ../audio-engine/libchimera_audio_engine.a /usr/lib/x86_64-linux-gnu/libdl.a 

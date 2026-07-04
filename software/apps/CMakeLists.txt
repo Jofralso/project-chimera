@@ -4,3 +4,13 @@ target_include_directories(chimera-play PRIVATE
   ${CMAKE_SOURCE_DIR}/software/audio-engine/include
   ${CMAKE_SOURCE_DIR}/sdk/include
 )
+
+if(TARGET chimera_ui)
+  add_executable(chimera-desktop chimera-desktop.cpp)
+  target_link_libraries(chimera-desktop PRIVATE chimera_ui chimera_audio_engine)
+  target_include_directories(chimera-desktop PRIVATE
+    ${CMAKE_SOURCE_DIR}/software/audio-engine/include
+    ${CMAKE_SOURCE_DIR}/software/chimera-ui/include
+    ${CMAKE_SOURCE_DIR}/sdk/include
+  )
+endif()
