@@ -203,9 +203,10 @@ void Engine::audio_callback_bridge(float** outputs, float** inputs,
 void Engine::audio_callback(float** outputs, float**, size_t num_frames) {
     if (state_.load() != EngineState::Running) {
         if (outputs) {
-            std::memset(outputs[0], 0, num_frames * sizeof(float));
-            if (config_.num_outputs > 1 && outputs[1]) {
-                std::memset(outputs[1], 0, num_frames * sizeof(float));
+            for (size_t ch = 0; ch < config_.num_outputs; ++ch) {
+                if (outputs[ch]) {
+                    std::memset(outputs[ch], 0, num_frames * sizeof(float));
+                }
             }
         }
         return;
@@ -215,10 +216,11 @@ void Engine::audio_callback(float** outputs, float**, size_t num_frames) {
     apply_pending_mutations();
     graph_.process(num_frames);
 
-    if (outputs && config_.num_outputs > 0) {
-        std::memset(outputs[0], 0, num_frames * sizeof(float));
-        if (config_.num_outputs > 1 && outputs[1]) {
-            std::memset(outputs[1], 0, num_frames * sizeof(float));
+    if (outputs) {
+        for (size_t ch = 0; ch < config_.num_outputs; ++ch) {
+            if (outputs[ch]) {
+                std::memset(outputs[ch], 0, num_frames * sizeof(float));
+            }
         }
     }
 }

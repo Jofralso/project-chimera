@@ -64,6 +64,33 @@ int main() {
              std::fabs(left_in->buffer.data[0] - 0.4f) < 0.001f);
     }
 
+    {
+        chimera::MasterOutputNode master8(8);
+        master8.prepare(48000.0, 256);
+        TEST("8ch master has 8 inputs", master8.num_inputs() == 8);
+
+        for (size_t ch = 0; ch < 8; ++ch) {
+            auto* in = master8.input(ch);
+            TEST("8ch master input exists", in != nullptr);
+            if (in) {
+                for (size_t i = 0; i < 256; ++i) {
+                    in->buffer.data[i] = 0.6f;
+                }
+            }
+        }
+
+        master8.set_volume(2.0f);
+        master8.process(256);
+
+        for (size_t ch = 0; ch < 8; ++ch) {
+            auto* in = master8.input(ch);
+            if (in) {
+                TEST("8ch volume clips at 1.0",
+                     std::fabs(in->buffer.data[0] - 1.0f) < 0.001f);
+            }
+        }
+    }
+
     std::printf("\n%d test(s) failed\n", failures);
     return failures > 0 ? 1 : 0;
 }

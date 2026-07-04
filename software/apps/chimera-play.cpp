@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
 
     double duration_s = 3.0;
     float frequency = 440.0f;
+    uint32_t channels = 2;
     std::string backend = "auto";
     std::string device = "default";
 
@@ -25,6 +26,9 @@ int main(int argc, char** argv) {
             duration_s = std::atof(argv[++i]);
         } else if (arg == "-f" && i + 1 < argc) {
             frequency = std::atof(argv[++i]);
+        } else if (arg == "-c" && i + 1 < argc) {
+            channels = static_cast<uint32_t>(std::atoi(argv[++i]));
+            if (channels < 1) channels = 1;
         } else if (arg == "--device" && i + 1 < argc) {
             device = argv[++i];
         } else if (arg == "--alsa") {
@@ -35,6 +39,7 @@ int main(int argc, char** argv) {
             std::printf("Usage: chimera-play [options]\n");
             std::printf("  -d SEC     Duration in seconds (default: 3.0)\n");
             std::printf("  -f HZ      Test tone frequency (default: 440)\n");
+            std::printf("  -c CH      Number of output channels (default: 2)\n");
             std::printf("  --device D PCM device name (default: default)\n");
             std::printf("  --alsa     Force ALSA backend\n");
             std::printf("  --dummy    Force dummy backend\n");
@@ -47,6 +52,7 @@ int main(int argc, char** argv) {
     config.backend = backend;
     config.client_name = "Chimera Play";
     config.audio_device = device;
+    config.num_outputs = channels;
 
     if (!engine.init(config)) {
         std::fprintf(stderr, "Failed to initialize engine\n");
@@ -57,13 +63,14 @@ int main(int argc, char** argv) {
                  frequency, duration_s, engine.backend()->name().c_str());
 
     auto tone = std::make_unique<chimera::TestToneNode>(frequency, 0.5f);
-    auto master = std::make_unique<chimera::MasterOutputNode>();
+    auto master = std::make_unique<chimera::MasterOutputNode>(channels);
 
     chimera::NodeID tone_id = engine.add_node(std::move(tone));
     chimera::NodeID master_id = engine.add_node(std::move(master));
 
-    engine.connect_nodes(tone_id, 0, master_id, 0);
-    engine.connect_nodes(tone_id, 0, master_id, 1);
+    for (uint32_t ch = 0; ch < channels; ++ch) {
+        engine.connect_nodes(tone_id, 0, master_id, ch);
+    }
 
     if (!engine.start()) {
         std::fprintf(stderr, "Failed to start engine\n");

@@ -52,12 +52,8 @@ void AudioNode::prepare(double sample_rate, size_t block_size) {
 }
 
 void AudioNode::release() {
-    for (auto& p : inputs_) {
-        p.buffer = AudioBuffer();
-    }
-    for (auto& p : outputs_) {
-        p.buffer = AudioBuffer();
-    }
+    inputs_.clear();
+    outputs_.clear();
 }
 
 } // namespace chimera

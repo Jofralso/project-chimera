@@ -13,16 +13,16 @@ namespace chimera {
 
 std::unique_ptr<AudioNode> create_builtin_node(const std::string& node_class) {
     if (node_class == "builtin.master_output") {
-        return std::make_unique<MasterOutputNode>();
+        return std::make_unique<MasterOutputNode>(0);
     }
     if (node_class == "builtin.test_tone") {
         return std::make_unique<TestToneNode>();
     }
     if (node_class == "builtin.audio_input") {
-        return std::make_unique<AudioInputNode>();
+        return std::make_unique<AudioInputNode>(0);
     }
     if (node_class == "builtin.audio_output") {
-        return std::make_unique<AudioOutputNode>();
+        return std::make_unique<AudioOutputNode>(0);
     }
     if (node_class.rfind("plugin:", 0) == 0) {
         return nullptr;

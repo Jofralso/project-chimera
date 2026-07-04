@@ -4,27 +4,23 @@
 
 namespace chimera {
 
-MasterOutputNode::MasterOutputNode()
+MasterOutputNode::MasterOutputNode(uint32_t num_channels)
     : AudioNode("Master Output", NodeType::Sink)
+    , num_channels_(num_channels)
 {
-    add_input({"Left In", PortDirection::Input, PortDataType::Audio});
-    add_input({"Right In", PortDirection::Input, PortDataType::Audio});
+    for (uint32_t i = 0; i < num_channels; ++i) {
+        add_input({"Ch " + std::to_string(i + 1), PortDirection::Input, PortDataType::Audio});
+    }
 }
 
 void MasterOutputNode::process(size_t num_frames) {
-    auto* left_in = input(0);
-    auto* right_in = input(1);
-
-    if (!left_in || !right_in) return;
-
-    float* left_data = left_in->buffer.data;
-    float* right_data = right_in->buffer.data;
-
-    for (size_t i = 0; i < num_frames; ++i) {
-        float l = left_data[i] * volume_;
-        float r = right_data[i] * volume_;
-        left_data[i] = std::clamp(l, -1.0f, 1.0f);
-        right_data[i] = std::clamp(r, -1.0f, 1.0f);
+    for (size_t ch = 0; ch < num_inputs(); ++ch) {
+        auto* in = input(ch);
+        if (!in || !in->buffer.data) continue;
+        float* data = in->buffer.data;
+        for (size_t i = 0; i < num_frames; ++i) {
+            data[i] = std::clamp(data[i] * volume_, -1.0f, 1.0f);
+        }
     }
 }
 
