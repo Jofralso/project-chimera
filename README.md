@@ -29,7 +29,7 @@ For **Jetson Orin Nano** deployment, see [`docs/05_JETSON.md`](docs/05_JETSON.md
 
 ## Requirements
 
-- CMake 3.25+
+- CMake 3.16+
 - C++20 compiler (GCC 13+, Clang 16+)
 - Linux (primary target)
 - Optional: JACK audio server

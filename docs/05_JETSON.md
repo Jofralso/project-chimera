@@ -223,15 +223,6 @@ make -j2
 cmake .. -DCHIMERA_BUILD_TESTS=OFF
 ```
 
-### CMake version too old
-
-```bash
-# Ubuntu 20.04 ships cmake 3.16. Install newer:
-sudo apt install -y software-properties-common
-sudo add-apt-repository ppa:kitware/ppa
-sudo apt update && sudo apt install -y cmake
-```
-
 ## Runtime Issues
 
 ### Blank screen / no display
