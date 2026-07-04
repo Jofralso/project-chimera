@@ -14,10 +14,14 @@ UI → Application Layer → Session Manager → Audio Engine → Plugin Host �
 | Plugin SDK | ✅ Built | Pure C ABI, versioned structs, vtable dispatch |
 | Session Manager | ✅ Built | Binary format, 60s autosave, save/load roundtrip |
 | Logger | ✅ Built | Thread-safe, level-based, file/stderr output |
-| Audio I/O | 🚧 Stub | AudioInputNode / AudioOutputNode (silent passthrough) |
-| ALSA Backend | ✅ Built | PCM playback, float/s16, auto-configure |
+| Multichannel | ✅ Built | Configurable N-channel MasterOutput, N-channel graph processing |
+| Audio I/O | 🚧 Stub | AudioInputNode / AudioOutputNode (configurable channel count, silent passthrough) |
+| ALSA Backend | ✅ Built | PCM playback, float/s16, auto-configure, N-channel |
 | JACK Backend | ⏳ Planned | JACK client with real process callback |
-| Hardware Abstraction | ⏳ Planned | RP2040, ESP32, GPIO abstractions |
+| chimera-play | ✅ Built | CLI playback app, -c/-f/-d/--alsa/--dummy/--device flags |
+| M0 (Platform) | ✅ Complete | Build, engine skeleton, logger, CI |
+| M1 (Audio Engine) | ✅ Complete | ALSA, plugin host, multichannel, graph serialization |
+| M2 (I/O & Effects) | 🚧 In progress | ALSA capture, SamplerNode, GainNode, transport |
 
 ## Detailed Stack
 
