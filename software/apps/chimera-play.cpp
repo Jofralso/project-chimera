@@ -4,6 +4,7 @@
 #include <chimera/nodes/gain_node.h>
 #include <chimera/nodes/sampler_node.h>
 #include <chimera/nodes/drum_node.h>
+#include <chimera/nodes/synth_node.h>
 #include <chimera/nodes/master_output.h>
 #include <chimera/nodes/audio_io.h>
 #include <chimera/session.h>
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
     bool drum_mode = false;
     float drum_bpm = 120.0f;
     std::vector<std::string> drum_samples;
+    bool synth_mode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -50,6 +52,8 @@ int main(int argc, char** argv) {
             drum_bpm = std::atof(argv[++i]);
         } else if (arg == "--drum-sample" && i + 1 < argc) {
             drum_samples.push_back(argv[++i]);
+        } else if (arg == "--synth") {
+            synth_mode = true;
         } else if (arg == "--device" && i + 1 < argc) {
             device = argv[++i];
         } else if (arg == "--alsa") {
@@ -67,6 +71,7 @@ int main(int argc, char** argv) {
             std::printf("  --drum      Drum machine mode\n");
             std::printf("  --drum-bpm  BPM for drum sequencer (default: 120)\n");
             std::printf("  --drum-sample FILE  Add drum sample (repeatable)\n");
+            std::printf("  --synth     Subtractive synth mode\n");
             std::printf("  --device D  PCM device name (default: default)\n");
             std::printf("  --alsa      Force ALSA backend\n");
             std::printf("  --dummy     Force dummy backend\n");
@@ -134,6 +139,38 @@ int main(int argc, char** argv) {
         engine.set_transport(chimera::TransportState::Playing);
 
         CHIMERA_INFO("Drum machine: %u pads, %.1f BPM", num_pads, drum_bpm);
+    } else if (synth_mode) {
+        auto master = std::make_unique<chimera::MasterOutputNode>(channels);
+        chimera::NodeID master_id = engine.add_node(std::move(master));
+
+        auto synth = std::make_unique<chimera::SynthNode>(8);
+        auto* synth_ptr = synth.get();
+        chimera::NodeID synth_id = engine.add_node(std::move(synth));
+
+        for (uint32_t c = 0; c < channels; ++c) {
+            engine.connect_nodes(synth_id, c % 2, master_id, c);
+        }
+
+        synth_ptr->params().waveform = chimera::Waveform::Saw;
+        synth_ptr->params().filter_cutoff = 0.7f;
+        synth_ptr->params().filter_resonance = 0.3f;
+        synth_ptr->params().filter_env_amount = 0.4f;
+        synth_ptr->params().attack_ms = 5.0f;
+        synth_ptr->params().decay_ms = 200.0f;
+        synth_ptr->params().sustain = 0.6f;
+        synth_ptr->params().release_ms = 300.0f;
+
+        // Play a bass line through the sequencer
+        auto& seq = engine.sequencer();
+        seq.set_bpm(120);
+        seq.set_steps_per_beat(4);
+        seq.set_num_steps(16);
+
+        // Arp-like pattern mapped to sequencer via fake "pad" triggers
+        // We manually send note events on start
+        engine.set_transport(chimera::TransportState::Playing);
+
+        CHIMERA_INFO("Synth: 8 voices, saw wave, filter, ADSR");
     } else if (!session_path.empty()) {
         chimera::Session session;
         if (!session.load(session_path)) {
@@ -207,6 +244,22 @@ int main(int argc, char** argv) {
 
     CHIMERA_INFO("Playing for %.1f seconds via %s backend",
                  duration_s, engine.backend()->name().c_str());
+
+    if (synth_mode) {
+        // SynthNode pointer survives add_node because graph stores unique_ptr to same object
+        // We find it by class name
+        auto* n = engine.graph().find_node_by_class("builtin.synth");
+        auto* synth_node = reinterpret_cast<chimera::SynthNode*>(n);
+        if (synth_node) {
+            uint8_t bassline[] = {36, 36, 48, 36, 43, 36, 48, 36,
+                                  38, 38, 50, 38, 45, 38, 50, 38};
+            for (int step = 0; step < 16; ++step) {
+                synth_node->note_on(bassline[step], 0.8f);
+                std::this_thread::sleep_for(std::chrono::milliseconds(125));
+                synth_node->note_off(bassline[step]);
+            }
+        }
+    }
 
     std::this_thread::sleep_for(std::chrono::duration<double>(duration_s));
 

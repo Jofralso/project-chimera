@@ -4,8 +4,12 @@
 #include "chimera/nodes/gain_node.h"
 #include "chimera/nodes/sampler_node.h"
 #include "chimera/nodes/drum_node.h"
+#include "chimera/nodes/synth_node.h"
 #include "chimera/nodes/step_sequencer.h"
 #include "chimera/dsp/adsr.h"
+#include "chimera/dsp/oscillator.h"
+#include "chimera/dsp/svf_filter.h"
+#include "chimera/dsp/envelope.h"
 #include "chimera/wav_loader.h"
 #include <cstdio>
 #include <cstdlib>
@@ -386,6 +390,166 @@ int main() {
         // Toggle at new valid step
         seq.toggle_step(0, 7);
         TEST("seq new step toggle", seq.step(0, 7).active);
+    }
+
+    // Oscillator tests
+    {
+        chimera::Oscillator osc;
+        osc.set_frequency(440.0f, 48000.0f);
+
+        // Check that oscillator produces output for each waveform
+        for (auto wave : {chimera::Waveform::Sine, chimera::Waveform::Saw,
+                           chimera::Waveform::Square, chimera::Waveform::Triangle}) {
+            float sum = 0.0f;
+            float peak = 0.0f;
+            osc.reset();
+            for (int i = 0; i < 4800; ++i) {
+                float s = osc.process(wave, 0.5f);
+                sum += s;
+                if (std::fabs(s) > peak) peak = std::fabs(s);
+            }
+            TEST("oscillator peak ~1.0", std::fabs(peak - 1.0f) < 0.01f);
+        }
+
+        // Check frequency is approximately correct by counting zero crossings
+        osc.reset();
+        osc.set_frequency(440.0f, 48000.0f);
+        int crossings = 0;
+        float prev = 0.0f;
+        for (int i = 0; i < 4800; ++i) {
+            float s = osc.process(chimera::Waveform::Sine, 0.5f);
+            if (prev <= 0.0f && s > 0.0f) crossings++;
+            prev = s;
+        }
+        // 440 Hz in 4800 samples at 48000 Hz = 0.1s = 44 cycles
+        TEST("oscillator frequency ~440 Hz",
+             crossings > 40 && crossings < 50);
+
+        // Pulse width for square
+        osc.reset();
+        float pw = 0.25f;
+        int high_count = 0;
+        for (int i = 0; i < 4800; ++i) {
+            float s = osc.process(chimera::Waveform::Square, pw);
+            if (s > 0.0f) high_count++;
+        }
+        // Roughly 25% of samples should be high
+        float ratio = static_cast<float>(high_count) / 4800.0f;
+        TEST("oscillator pulse width", std::fabs(ratio - 0.25f) < 0.03f);
+    }
+
+    // SVF filter tests
+    {
+        chimera::StateVariableFilter filt;
+
+        // Low-pass: DC should pass through
+        filt.reset();
+        float dc_out = 0.0f;
+        for (int i = 0; i < 10000; ++i) {
+            dc_out = filt.process(1.0f, 0.1f, 0.8f, chimera::FilterMode::LowPass);
+        }
+        TEST("filter LP DC passes", std::fabs(dc_out - 1.0f) < 0.1f);
+
+        // High-pass: DC should be blocked
+        filt.reset();
+        float hp_dc = 1.0f;
+        for (int i = 0; i < 10000; ++i) {
+            hp_dc = filt.process(1.0f, 0.1f, 0.8f, chimera::FilterMode::HighPass);
+        }
+        TEST("filter HP blocks DC", std::fabs(hp_dc) < 0.1f);
+
+        // Band-pass: DC should be blocked
+        filt.reset();
+        float bp_dc = 1.0f;
+        for (int i = 0; i < 10000; ++i) {
+            bp_dc = filt.process(1.0f, 0.1f, 0.8f, chimera::FilterMode::BandPass);
+        }
+        TEST("filter BP blocks DC", std::fabs(bp_dc) < 0.1f);
+
+        // Notch: DC should pass
+        filt.reset();
+        float notch_dc = 0.0f;
+        for (int i = 0; i < 10000; ++i) {
+            notch_dc = filt.process(1.0f, 0.1f, 0.8f, chimera::FilterMode::Notch);
+        }
+        TEST("filter notch DC passes", std::fabs(notch_dc - 1.0f) < 0.1f);
+
+        // Reset should clear state
+        filt.reset();
+        float after_reset = filt.process(0.0f, 0.5f, 0.0f, chimera::FilterMode::LowPass);
+        TEST("filter reset clears state", std::fabs(after_reset) < 0.001f);
+    }
+
+    // Full ADSR envelope tests
+    {
+        chimera::Envelope env;
+        TEST("env initially idle", env.stage() == chimera::Envelope::Stage::Idle);
+        TEST("env initial value zero", env.value() < 0.001f);
+        TEST("env not active", !env.is_active());
+
+        env.set_params(5.0f, 100.0f, 0.5f, 50.0f, 48000.0f);
+        env.trigger();
+        TEST("env attack after trigger", env.stage() == chimera::Envelope::Stage::Attack);
+        TEST("env active after trigger", env.is_active());
+
+        // Process through attack
+        for (int i = 0; i < 4800; ++i) env.process();
+        // Should now be in decay (attack was 5ms = 240 samples)
+        TEST("env reaches decay or sustain",
+             env.stage() == chimera::Envelope::Stage::Decay ||
+             env.stage() == chimera::Envelope::Stage::Sustain);
+
+        // Process through decay
+        for (int i = 0; i < 48000; ++i) env.process();
+        // Should be in sustain
+        TEST("env reaches sustain", env.stage() == chimera::Envelope::Stage::Sustain);
+        TEST("env sustain value ~0.5", std::fabs(env.value() - 0.5f) < 0.01f);
+
+        // Release
+        env.release();
+        TEST("env release after release", env.stage() == chimera::Envelope::Stage::Release);
+        for (int i = 0; i < 48000; ++i) env.process();
+        TEST("env idle after release", env.stage() == chimera::Envelope::Stage::Idle);
+        TEST("env not active after release", !env.is_active());
+    }
+
+    // SynthNode tests
+    {
+        chimera::SynthNode synth(4);
+        synth.prepare(48000.0, 256);
+        TEST("synth 4 voices", synth.max_voices() == 4);
+        TEST("synth stereo output", synth.num_outputs() == 2);
+        TEST("synth 0 active initially", synth.active_voice_count() == 0);
+
+        // Use a fast release for test
+        synth.params().release_ms = 10.0f;
+
+        // Trigger a note
+        synth.note_on(69, 1.0f); // A4 = 440 Hz
+        synth.process(256);
+        TEST("synth 1 active after note-on", synth.active_voice_count() == 1);
+
+        auto* left = synth.output(0);
+        TEST("synth left output exists", left != nullptr);
+        float peak = 0.0f;
+        for (size_t i = 0; i < 256; ++i) {
+            if (std::fabs(left->buffer.data[i]) > peak) peak = std::fabs(left->buffer.data[i]);
+        }
+        TEST("synth produces output", peak > 0.0f);
+
+        // Second note (same note should retrigger)
+        synth.note_on(69, 1.0f);
+        synth.process(256);
+        TEST("synth still 1 voice (same note retriggered)",
+             synth.active_voice_count() == 1);
+
+        // Note off
+        synth.note_off(69);
+        synth.process(256);
+        TEST("synth voice released", synth.active_voice_count() > 0);
+        // Process until release finishes
+        for (int i = 0; i < 200; ++i) synth.process(256);
+        TEST("synth all voices idle after release", synth.active_voice_count() == 0);
     }
 
     std::printf("\n%d test(s) failed\n", failures);
