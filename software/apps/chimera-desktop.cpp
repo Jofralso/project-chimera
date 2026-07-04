@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
     std::string backend = "auto";
     std::string device = "default";
     int window_scale = 2;
+    bool touch_mode = false;
     bool help = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -31,7 +32,12 @@ int main(int argc, char** argv) {
         else if (arg == "--jack") backend = "jack";
         else if (arg == "--dummy") backend = "dummy";
         else if (arg == "--scale" && i + 1 < argc) window_scale = std::atoi(argv[++i]);
+        else if (arg == "--touch") touch_mode = true;
         else if (arg == "-h" || arg == "--help") help = true;
+    }
+
+    if (touch_mode) {
+        window_scale = std::max(window_scale, 3);
     }
 
     if (help) {
@@ -39,7 +45,8 @@ int main(int argc, char** argv) {
         std::printf("  --alsa      Force ALSA backend\n");
         std::printf("  --jack      Force JACK backend\n");
         std::printf("  --dummy     Force dummy backend\n");
-        std::printf("  --scale N   Window scale factor (default: 2)\n");
+        std::printf("  --scale N   Window scale factor (default: 2, touch: 3)\n");
+        std::printf("  --touch     Touchscreen mode (larger UI, touch events)\n");
         return 0;
     }
 
@@ -116,6 +123,10 @@ int main(int argc, char** argv) {
     if (!display.init("Chimera Desktop", window_scale)) {
         std::fprintf(stderr, "Failed to initialize display\n");
         return 1;
+    }
+
+    if (display.touch_mode()) {
+        CHIMERA_INFO("Touchscreen detected — touch/click UI enabled");
     }
 
     display.set_engine(&engine);

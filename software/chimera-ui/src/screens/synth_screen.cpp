@@ -1,5 +1,6 @@
 #include "chimera/ui/screens/synth_screen.h"
 
+#include <SDL_events.h>
 #include <cmath>
 
 namespace chimera::ui {
@@ -141,6 +142,39 @@ void SynthScreen::on_knob(int index, int delta) {
     }
 
     apply_to_engine();
+}
+
+void SynthScreen::on_mouse(int mx, int my, int buttons) {
+    auto& t = theme();
+
+    if (buttons & SDL_BUTTON_LMASK) {
+        if (drag_knob_ < 0) {
+            drag_knob_ = hit_test_knob(mx, my);
+            if (drag_knob_ >= 0) {
+                drag_start_y_ = my;
+                drag_start_value_ = knobs()[drag_knob_].value;
+            }
+        }
+        if (drag_knob_ >= 0) {
+            handle_knob_drag(my);
+            apply_to_engine();
+            return;
+        }
+
+        int preview_y = t.header_h + t.padding;
+        int preview_h = 100;
+        if (my >= preview_y && my < preview_y + preview_h) {
+            knobs_[0].value += 0.25f;
+            if (knobs_[0].value > 1.0f) knobs_[0].value = 0.0f;
+            const char* names[] = {"sine", "saw", "square", "tri"};
+            int idx = static_cast<int>(knobs_[0].value * 4);
+            if (idx > 3) idx = 3;
+            knobs_[0].value_str = names[idx];
+            apply_to_engine();
+        }
+    } else {
+        end_knob_drag();
+    }
 }
 
 } // namespace chimera::ui

@@ -8,6 +8,7 @@
 #include <ctime>
 #include <filesystem>
 #include <cstring>
+#include <SDL_events.h>
 
 namespace chimera::ui {
 
@@ -225,6 +226,43 @@ void BrowserScreen::on_key(int key, bool down) {
         case 269: // F5 - save session
             if (mode_ == 1) save_session();
             break;
+    }
+}
+
+void BrowserScreen::on_mouse(int mx, int my, int buttons) {
+    auto& t = theme();
+
+    if (buttons & SDL_BUTTON_LMASK) {
+        if (drag_knob_ < 0) {
+            drag_knob_ = hit_test_knob(mx, my);
+            if (drag_knob_ >= 0) {
+                drag_start_y_ = my;
+                drag_start_value_ = knobs()[drag_knob_].value;
+            }
+        }
+        if (drag_knob_ >= 0) {
+            handle_knob_drag(my);
+            if (drag_knob_ == 3 && knobs()[3].active) {
+                activate_entry();
+            }
+            return;
+        }
+
+        int list_y = t.header_h + 18;
+        int list_h = t.screen_h - list_y - t.footer_h - t.padding;
+        if (my >= list_y && my < list_y + list_h) {
+            int line_h = 14;
+            int idx = (my - list_y - 2) / line_h + scroll_;
+            int logical_idx = idx - (scroll_ <= -1 ? 1 : 0);
+            if (logical_idx >= -1 && logical_idx < static_cast<int>(entries_.size())) {
+                cursor_ = logical_idx;
+                if (!(buttons & SDL_BUTTON_LMASK)) {
+                    activate_entry();
+                }
+            }
+        }
+    } else {
+        end_knob_drag();
     }
 }
 

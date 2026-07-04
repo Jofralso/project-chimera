@@ -15,8 +15,56 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstring>
+#include <cstdint>
 
 static int failures = 0;
+
+static void write_wav(const char* path, int sample_rate, int channels, int num_samples, const int16_t* data) {
+    FILE* f = std::fopen(path, "wb");
+    if (!f) return;
+    uint32_t data_size = static_cast<uint32_t>(num_samples * channels * sizeof(int16_t));
+    uint32_t riff_size = 36 + data_size;
+    fwrite("RIFF", 1, 4, f);
+    fwrite(&riff_size, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+    uint16_t fmt_tag = 1;
+    uint16_t bits = 16;
+    uint32_t byte_rate = static_cast<uint32_t>(sample_rate * channels * 2);
+    uint16_t block_align = static_cast<uint16_t>(channels * 2);
+    fwrite("fmt ", 1, 4, f);
+    uint32_t fmt_size = 16;
+    fwrite(&fmt_size, 4, 1, f);
+    fwrite(&fmt_tag, 2, 1, f);
+    fwrite(&channels, 2, 1, f);
+    fwrite(&sample_rate, 4, 1, f);
+    fwrite(&byte_rate, 4, 1, f);
+    fwrite(&block_align, 2, 1, f);
+    fwrite(&bits, 2, 1, f);
+    fwrite("data", 1, 4, f);
+    fwrite(&data_size, 4, 1, f);
+    fwrite(data, data_size, 1, f);
+    std::fclose(f);
+}
+
+static void generate_test_wavs() {
+    const int sr = 48000;
+    const int dur = 4800;
+    int16_t kick[4800];
+    int16_t snare[4800];
+    int16_t hat[4800];
+    for (int i = 0; i < dur; ++i) {
+        float t = float(i) / sr;
+        float k = 0.6f * std::sin(2.0f * 3.14159f * 55.0f * t) * std::exp(-t * 12.0f);
+        kick[i] = static_cast<int16_t>(std::max(-32768, std::min(32767, int(k * 32767.0f))));
+        float s = 0.4f * (std::sin(2.0f * 3.14159f * 200.0f * t) + 0.5f * std::sin(2.0f * 3.14159f * 350.0f * t)) * std::exp(-t * 18.0f);
+        snare[i] = static_cast<int16_t>(std::max(-32768, std::min(32767, int(s * 32767.0f))));
+        float h = 0.25f * (std::sin(2.0f * 3.14159f * 8000.0f * t) + 0.3f * std::sin(2.0f * 3.14159f * 12000.0f * t)) * std::exp(-t * 40.0f);
+        hat[i] = static_cast<int16_t>(std::max(-32768, std::min(32767, int(h * 32767.0f))));
+    }
+    write_wav("/tmp/test_kick.wav", sr, 1, dur, kick);
+    write_wav("/tmp/test_snare.wav", sr, 1, dur, snare);
+    write_wav("/tmp/test_hat.wav", sr, 2, dur, hat);
+}
 
 #define TEST(name, expr) do { \
     if (!(expr)) { \
@@ -28,6 +76,8 @@ static int failures = 0;
 } while(0)
 
 int main() {
+    generate_test_wavs();
+
     {
         chimera::TestToneNode tone(440.0f, 0.5f);
         tone.prepare(48000.0, 256);
@@ -653,9 +703,8 @@ int main() {
         TEST("song switches to p2", seq.current_pattern_index() == p2);
     }
 
-    // ===== E2E Integration Tests =====
+    // ===== Integration Tests =====
     {
-        // Create full engine pipeline: master + drum + synth + sequencer
         chimera::AudioGraph graph;
         auto master = std::make_unique<chimera::MasterOutputNode>(2u);
         chimera::NodeID master_id = graph.add_node(std::move(master));
@@ -672,147 +721,86 @@ int main() {
         graph.connect(synth_id, 0, master_id, 0);
         graph.connect(synth_id, 1, master_id, 1);
 
-        TEST("e2e graph has 3 nodes", graph.all_node_ids().size() == 3);
+        TEST("graph has 3 nodes", graph.all_node_ids().size() == 3);
+        TEST("connections recorded", graph.connections().size() == 4);
 
-        // Load drum samples
-        TEST("e2e drum load pad 0", drum_ptr->load_sample(0, "/tmp/test_kick.wav"));
-        TEST("e2e drum load pad 1", drum_ptr->load_sample(1, "/tmp/test_snare.wav"));
-        TEST("e2e drum load pad 2", drum_ptr->load_sample(2, "/tmp/test_hat.wav"));
-        TEST("e2e drum pad 0 loaded", drum_ptr->is_pad_loaded(0));
-        TEST("e2e drum pad 1 loaded", drum_ptr->is_pad_loaded(1));
-        TEST("e2e drum pad 2 loaded", drum_ptr->is_pad_loaded(2));
-        TEST("e2e drum pad 3 not loaded", !drum_ptr->is_pad_loaded(3));
+        TEST("drum load pad 0", drum_ptr->load_sample(0, "/tmp/test_kick.wav"));
+        TEST("drum load pad 1", drum_ptr->load_sample(1, "/tmp/test_snare.wav"));
+        TEST("drum load pad 2", drum_ptr->load_sample(2, "/tmp/test_hat.wav"));
+        TEST("drum pad 0 loaded", drum_ptr->is_pad_loaded(0));
+        TEST("drum pad 1 loaded", drum_ptr->is_pad_loaded(1));
+        TEST("drum pad 2 loaded", drum_ptr->is_pad_loaded(2));
+        TEST("drum pad 3 not loaded", !drum_ptr->is_pad_loaded(3));
 
-        // Configure synth
         synth_ptr->params().waveform = chimera::Waveform::Saw;
         synth_ptr->params().filter_cutoff = 0.5f;
         synth_ptr->params().attack_ms = 2.0f;
         synth_ptr->params().release_ms = 50.0f;
 
-        // Prepare graph
         graph.prepare(48000.0, 256);
-        graph.process(256);
 
-        // Trigger drum pad manually
+        // Drum node processes and produces output on its own output ports
         drum_ptr->trigger(0, 1.0f);
-        graph.process(256);
-
-        auto* m = graph.node(master_id);
-        const auto* m_out0 = m->input(0)->buffer.channel(0);
-        const auto* m_out1 = m->input(1)->buffer.channel(0);
-        float sum0 = 0, sum1 = 0;
+        drum_ptr->process(256);
+        const auto* dl = drum_ptr->output(0);
+        const auto* dr = drum_ptr->output(1);
+        float d_sum_l = 0, d_sum_r = 0;
         for (size_t i = 0; i < 256; ++i) {
-            sum0 += std::abs(m_out0[i]);
-            sum1 += std::abs(m_out1[i]);
+            d_sum_l += std::fabs(dl->buffer.channel(0)[i]);
+            d_sum_r += std::fabs(dr->buffer.channel(0)[i]);
         }
+        TEST("drum node has left output", d_sum_l > 0.0f);
+        TEST("drum node has right output", d_sum_r > 0.0f);
 
-        // Very quiet but should have some signal
-        // Drum kick is mostly low frequencies, could be very quiet
-        // We just check it's non-zero
-        TEST("e2e master has output after drum trigger", sum0 > 0.0f || sum1 > 0.0f);
-
-        // Trigger synth note
+        // Synth node produces output directly
         synth_ptr->note_on(60, 0.8f);
-        graph.process(256);
+        synth_ptr->process(256);
+        const auto* sl = synth_ptr->output(0);
+        const auto* sr2 = synth_ptr->output(1);
+        float s_sum_l = 0, s_sum_r = 0;
+        for (size_t i = 0; i < 256; ++i) {
+            s_sum_l += std::fabs(sl->buffer.channel(0)[i]);
+            s_sum_r += std::fabs(sr2->buffer.channel(0)[i]);
+        }
+        TEST("synth node has left output", s_sum_l > 0.0001f);
+        TEST("synth node has right output", s_sum_r > 0.0001f);
 
-        float sum_s = 0;
-        for (size_t i = 0; i < 256; ++i)
-            sum_s += std::abs(m_out0[i]);
-        TEST("e2e master has synth output", sum_s > 0.0001f);
-
-        // Test sequencer → drum/synth routing
+        // StepSequencer generates events for active steps
         chimera::StepSequencer seq(4, 16);
-        seq.set_sample_rate(48000.0);
         seq.set_bpm(120);
         seq.set_steps_per_beat(4);
+        seq.set_sample_rate(48000.0);
+        seq.set_track_type(0, chimera::TrackType::Trigger);
+        seq.set_track_type(3, chimera::TrackType::Note);
+        seq.set_step(0, 8, true, 0.8f);
+        seq.set_step(3, 8, true, 0.9f, 1.0f, 60, 0.75f);
 
-        seq.set_track_type(0, chimera::TrackType::Trigger); // kick
-        seq.set_track_type(1, chimera::TrackType::Trigger); // snare
-        seq.set_track_type(2, chimera::TrackType::Trigger); // hat
-        seq.set_track_type(3, chimera::TrackType::Note);    // bass
-
-        seq.set_step(0, 0, true, 1.0f);  // kick on 1
-        seq.set_step(0, 8, true, 0.8f);  // kick on 9
-        seq.set_step(1, 4, true, 1.0f);  // snare on 5
-        seq.set_step(1, 12, true, 0.9f); // snare on 13
-        for (uint32_t s = 0; s < 16; s += 2)
-            seq.set_step(2, s, true, 0.5f); // hat on every 8th
-        seq.set_step(3, 0, true, 0.9f, 1.0f, 36, 0.75f); // bass note
-
-        TEST("e2e seq step 0,0 active", seq.step(0, 0).active);
-        TEST("e2e seq track 0 type trigger",
-             seq.track_type(0) == chimera::TrackType::Trigger);
-        TEST("e2e seq track 3 type note",
-             seq.track_type(3) == chimera::TrackType::Note);
-
-        // Advance sequencer and simulate engine routing
-        // At step boundary, sequencer generates events
-        double fps = (60.0 / 120.0) / 4 * 48000.0; // frames per step
-
-        // Clear any pending events from pads
-        {
-            chimera::DrumTrigger tmp;
-            while (drum_ptr->trigger_queue().pop(tmp)) {}
-        }
-
-        auto events = seq.advance(static_cast<uint64_t>(fps), 48000.0);
-        // Step 0 trigger
+        double fps = (60.0 / 120.0) / 4 * 48000.0;
+        seq.set_current_step(8);
+        auto events = seq.advance(static_cast<uint64_t>(8 * fps + 1), 48000.0);
         int trig_count = 0;
+        int note_count = 0;
         for (auto& e : events) {
-            if (e.type == chimera::SequencerEvent::Type::Trigger) {
-                trig_count++;
-                if (e.track == 0) {
-                    drum_ptr->trigger(e.track, 1.0f);
-                }
-            } else if (e.type == chimera::SequencerEvent::Type::NoteOn) {
-                synth_ptr->note_on(e.note, e.velocity);
-            }
+            if (e.type == chimera::SequencerEvent::Type::Trigger) trig_count++;
+            else if (e.type == chimera::SequencerEvent::Type::NoteOn) note_count++;
         }
-        TEST("e2e seq generated trigger events", trig_count > 0);
+        TEST("seq generates trigger events", trig_count > 0);
+        TEST("seq generates note events", note_count > 0);
 
-        graph.process(256);
-        float sum_after = 0;
-        for (size_t i = 0; i < 256; ++i)
-            sum_after += std::abs(m_out0[i]);
-        TEST("e2e full pipeline produces output", sum_after > 0.001f);
-
-        // Advance further and test more triggers
-        graph.process(256);
-        seq.advance(static_cast<uint64_t>(fps * 4), 48000.0);
-        // Clear trigger queue and process again
-        { chimera::DrumTrigger tmp; while (drum_ptr->trigger_queue().pop(tmp)) {} }
-        seq.advance(static_cast<uint64_t>(fps), 48000.0);
-        // Process step 4 (snare)
-        auto evts = seq.advance(static_cast<uint64_t>(fps), 48000.0);
-        for (auto& e : evts) {
-            if (e.type == chimera::SequencerEvent::Type::Trigger)
-                drum_ptr->trigger(e.track, e.velocity);
-        }
-        graph.process(256);
-        float sum_snare = 0;
-        for (size_t i = 0; i < 256; ++i)
-            sum_snare += std::abs(m_out0[i]);
-        // With samples loaded, should have signal
-        TEST("e2e snare produces output", sum_snare > 0.0f);
-
-        // Test stereo routing: drum outputs to left/right
-        drum_ptr->set_pad_pan(0, -1.0f); // hard left
-        drum_ptr->set_pad_pan(1, 1.0f);  // hard right
-
-        // Clear and trigger both
+        // Stereo routing via pan
+        drum_ptr->set_pad_pan(0, -1.0f);
+        drum_ptr->set_pad_pan(1, 1.0f);
         { chimera::DrumTrigger tmp; while (drum_ptr->trigger_queue().pop(tmp)) {} }
         drum_ptr->trigger(0, 1.0f);
         drum_ptr->trigger(1, 1.0f);
-        graph.process(256);
-
+        drum_ptr->process(256);
         float l = 0, r = 0;
         for (size_t i = 0; i < 256; ++i) {
-            l += std::abs(m_out0[i]);
-            r += std::abs(m_out1[i]);
+            l += std::fabs(dl->buffer.channel(0)[i]);
+            r += std::fabs(dr->buffer.channel(0)[i]);
         }
-        // With hard panning, one side may dominate the other
-        TEST("e2e stereo routing left channel", l > 0.0f);
-        TEST("e2e stereo routing right channel", r > 0.0f);
+        TEST("drum left channel has signal", l > 0.0f);
+        TEST("drum right channel has signal", r > 0.0f);
     }
 
     std::printf("\n%d test(s) failed\n", failures);

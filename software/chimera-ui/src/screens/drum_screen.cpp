@@ -1,5 +1,6 @@
 #include "chimera/ui/screens/drum_screen.h"
 
+#include <SDL_events.h>
 #include <cmath>
 #include <cstdio>
 
@@ -135,6 +136,52 @@ void DrumScreen::on_key(int key, bool down) {
                 }
             }
             break;
+    }
+}
+
+void DrumScreen::on_mouse(int mx, int my, int buttons) {
+    auto& t = theme();
+
+    if (buttons & SDL_BUTTON_LMASK) {
+        if (drag_knob_ < 0) {
+            drag_knob_ = hit_test_knob(mx, my);
+            if (drag_knob_ >= 0) {
+                drag_start_y_ = my;
+                drag_start_value_ = knobs()[drag_knob_].value;
+            }
+        }
+        if (drag_knob_ >= 0) {
+            handle_knob_drag(my);
+            apply_to_engine();
+            return;
+        }
+
+        int pad_grid_x = t.padding;
+        int pad_grid_y = t.header_h + t.padding;
+        int pad_grid_w = t.screen_w - 2 * t.padding;
+        int pad_grid_h = 180;
+        int grid_cols = 4;
+        int pad_w = (pad_grid_w - (grid_cols + 1) * t.padding) / grid_cols;
+
+        if (mx >= pad_grid_x && mx < pad_grid_x + pad_grid_w &&
+            my >= pad_grid_y && my < pad_grid_y + pad_grid_h) {
+            int col = (mx - pad_grid_x - t.padding) / (pad_w + t.padding);
+            if (col >= 0 && col < 4) {
+                selected_pad_ = col;
+                pad_flash_[col].trigger();
+                pad_levels_[col].set(1.0f);
+                meter_.set(1.0f);
+                if (engine_) {
+                    auto* n = engine_->graph().find_node_by_class("builtin.drum");
+                    if (n) {
+                        reinterpret_cast<chimera::DrumNode*>(n)->trigger(
+                            static_cast<uint32_t>(col), 1.0f);
+                    }
+                }
+            }
+        }
+    } else {
+        end_knob_drag();
     }
 }
 

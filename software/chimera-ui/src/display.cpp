@@ -41,6 +41,12 @@ bool Display::init(const char* title, int scale) {
         return false;
     }
 
+    if (SDL_GetNumTouchDevices() > 0) {
+        touch_mode_ = true;
+        std::printf("UI: Touchscreen detected (%d devices)\n",
+                     SDL_GetNumTouchDevices());
+    }
+
     // Open first joystick if available
     int num_joysticks = SDL_NumJoysticks();
     if (num_joysticks > 0) {
@@ -206,7 +212,13 @@ void Display::handle_events() {
 
                 if (!screens_.empty() && active_screen_ >= 0) {
                     int vkey = sdl2_key_to_virtual(key);
-                    if (vkey) screens_[active_screen_]->on_key(vkey, true);
+                    if (vkey) {
+                        if (menu_open_ && vkey == 27) {
+                            close_menu();
+                        } else {
+                            screens_[active_screen_]->on_key(vkey, true);
+                        }
+                    }
                 }
                 break;
             }
@@ -226,8 +238,42 @@ void Display::handle_events() {
                 int mx = event.button.x / scale_;
                 int my = event.button.y / scale_;
                 int buttons = SDL_GetMouseState(nullptr, nullptr);
-                if (!screens_.empty() && active_screen_ >= 0) {
+
+                if (menu_open_) {
+                    if (event.type == SDL_MOUSEBUTTONUP) {
+                        int cols = 2;
+                        int item_w = (theme().screen_w - 2 * theme().padding - (cols - 1) * theme().padding) / cols;
+                        int item_h = 60;
+                        int rows = (static_cast<int>(screens_.size()) + cols - 1) / cols;
+                        int total_h = rows * item_h + (rows - 1) * theme().padding;
+                        int start_y = (theme().screen_h - total_h) / 2;
+
+                        for (size_t i = 0; i < screens_.size(); ++i) {
+                            int col = static_cast<int>(i) % cols;
+                            int row = static_cast<int>(i) / cols;
+                            int x = theme().padding + col * (item_w + theme().padding);
+                            int y = start_y + row * (item_h + theme().padding);
+                            if (mx >= x && mx < x + item_w && my >= y && my < y + item_h) {
+                                switch_screen(static_cast<int>(i));
+                                close_menu();
+                                break;
+                            }
+                        }
+                        if (menu_open_) close_menu();
+                    }
+                } else if (!screens_.empty() && active_screen_ >= 0) {
                     screens_[active_screen_]->on_mouse(mx, my, buttons);
+
+                    auto& t = theme();
+                    int menu_btn_x = t.screen_w - t.padding - 30;
+                    int menu_btn_y = t.padding + 6;
+                    int menu_btn_r = 10;
+                    int dx = mx - menu_btn_x;
+                    int dy = my - menu_btn_y;
+                    if (event.type == SDL_MOUSEBUTTONUP &&
+                        dx * dx + dy * dy <= (menu_btn_r + 4) * (menu_btn_r + 4)) {
+                        toggle_menu();
+                    }
                 }
                 break;
             }
@@ -235,6 +281,85 @@ void Display::handle_events() {
             case SDL_MOUSEWHEEL: {
                 if (!screens_.empty() && active_screen_ >= 0) {
                     screens_[active_screen_]->on_knob(0, event.wheel.y);
+                }
+                break;
+            }
+
+            case SDL_FINGERDOWN: {
+                int mx = static_cast<int>(event.tfinger.x * theme().screen_w);
+                int my = static_cast<int>(event.tfinger.y * theme().screen_h);
+                touch_active_ = true;
+                touch_mx_ = mx;
+                touch_my_ = my;
+
+                if (menu_open_) {
+                    int cols = 2;
+                    int item_w = (theme().screen_w - 2 * theme().padding - (cols - 1) * theme().padding) / cols;
+                    int item_h = 60;
+                    int rows = (static_cast<int>(screens_.size()) + cols - 1) / cols;
+                    int total_h = rows * item_h + (rows - 1) * theme().padding;
+                    int start_y = (theme().screen_h - total_h) / 2;
+                    menu_selected_ = -1;
+                    for (size_t i = 0; i < screens_.size(); ++i) {
+                        int col = static_cast<int>(i) % cols;
+                        int row = static_cast<int>(i) / cols;
+                        int x = theme().padding + col * (item_w + theme().padding);
+                        int y = start_y + row * (item_h + theme().padding);
+                        if (mx >= x && mx < x + item_w && my >= y && my < y + item_h) {
+                            menu_selected_ = static_cast<int>(i);
+                            break;
+                        }
+                    }
+                } else {
+                    auto& t = theme();
+                    int menu_btn_x = t.screen_w - t.padding - 30;
+                    int menu_btn_y = t.padding + 6;
+                    int menu_btn_r = 10;
+                    int dx = mx - menu_btn_x;
+                    int dy = my - menu_btn_y;
+                    if (dx * dx + dy * dy <= (menu_btn_r + 4) * (menu_btn_r + 4)) {
+                        toggle_menu();
+                    }
+                }
+                break;
+            }
+
+            case SDL_FINGERUP: {
+                touch_active_ = false;
+
+                if (menu_open_) {
+                    if (menu_selected_ >= 0 && menu_selected_ < static_cast<int>(screens_.size())) {
+                        switch_screen(menu_selected_);
+                    }
+                    close_menu();
+                }
+                break;
+            }
+
+            case SDL_FINGERMOTION: {
+                if (!touch_active_) break;
+                touch_mx_ = static_cast<int>(event.tfinger.x * theme().screen_w);
+                touch_my_ = static_cast<int>(event.tfinger.y * theme().screen_h);
+
+                if (menu_open_) {
+                    int cols = 2;
+                    int item_w = (theme().screen_w - 2 * theme().padding - (cols - 1) * theme().padding) / cols;
+                    int item_h = 60;
+                    int rows = (static_cast<int>(screens_.size()) + cols - 1) / cols;
+                    int total_h = rows * item_h + (rows - 1) * theme().padding;
+                    int start_y = (theme().screen_h - total_h) / 2;
+                    menu_selected_ = -1;
+                    for (size_t i = 0; i < screens_.size(); ++i) {
+                        int col = static_cast<int>(i) % cols;
+                        int row = static_cast<int>(i) / cols;
+                        int x = theme().padding + col * (item_w + theme().padding);
+                        int y = start_y + row * (item_h + theme().padding);
+                        if (touch_mx_ >= x && touch_mx_ < x + item_w &&
+                            touch_my_ >= y && touch_my_ < y + item_h) {
+                            menu_selected_ = static_cast<int>(i);
+                            break;
+                        }
+                    }
                 }
                 break;
             }
@@ -290,6 +415,12 @@ void Display::handle_joystick_button(int button, bool down) {
         return;
     }
 
+    // Button 9 (usually Start) → toggle menu
+    if (button == 9) {
+        toggle_menu();
+        return;
+    }
+
     // Other mappings
     int vkey = 0;
     switch (button) {
@@ -321,6 +452,10 @@ void Display::render() {
                                "no screen loaded", t.fg_dim);
     }
 
+    if (menu_open_) {
+        draw_screen_menu(*canvas_);
+    }
+
     // Screen indicator bar
     int bar_y = t.screen_h - 4;
     if (!screens_.empty()) {
@@ -332,11 +467,65 @@ void Display::render() {
         }
     }
 
+    // Touch feedback indicator
+    if (touch_active_) {
+        canvas_->circle(touch_mx_, touch_my_, 6, t.fg_bright, true);
+        canvas_->circle(touch_mx_, touch_my_, 8, t.fg_bright, false);
+    }
+
     SDL_UpdateTexture(texture_, nullptr, canvas_->pixels(),
                       t.screen_w * sizeof(uint32_t));
     SDL_RenderClear(renderer_);
     SDL_RenderCopy(renderer_, texture_, nullptr, nullptr);
     SDL_RenderPresent(renderer_);
+}
+
+void Display::draw_screen_menu(Canvas& canvas) {
+    auto& t = theme();
+
+    // Dimmed background overlay
+    canvas.fill_rect(0, 0, t.screen_w, t.screen_h,
+                     Color(0, 0, 0, 200));
+
+    int cols = 2;
+    int rows = (screens_.size() + cols - 1) / cols;
+    int item_w = (t.screen_w - 2 * t.padding - (cols - 1) * t.padding) / cols;
+    int item_h = 60;
+    int total_h = rows * item_h + (rows - 1) * t.padding;
+    int start_y = (t.screen_h - total_h) / 2;
+
+    for (size_t i = 0; i < screens_.size(); ++i) {
+        int col = static_cast<int>(i) % cols;
+        int row = static_cast<int>(i) / cols;
+        int x = t.padding + col * (item_w + t.padding);
+        int y = start_y + row * (item_h + t.padding);
+
+        bool active = (static_cast<int>(i) == active_screen_);
+        bool selected = (static_cast<int>(i) == menu_selected_);
+
+        Color bg_c = active ? Color(40, 50, 20, 255) : t.bg;
+        Color border_c = selected ? t.fg_bright : (active ? t.fg : t.fg_dim);
+
+        canvas.fill_rect(x, y, item_w, item_h, bg_c);
+        canvas.rect(x, y, item_w, item_h, border_c, 2);
+
+        if (active) {
+            canvas.fill_rect(x + 2, y + 2, item_w - 4, 3, t.fg);
+        }
+
+        canvas.text_centered(x, y + item_h / 2 - 10, item_w,
+                             screens_[i]->name().c_str(),
+                             active ? t.fg_bright : t.fg, 2);
+
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(i) + 1);
+        canvas.text_right(x + 4, y + item_h / 2 - 10, item_w - 8,
+                          buf, t.fg_dim, 1);
+    }
+
+    canvas.text_centered(0, t.screen_h - t.footer_h + 4, t.screen_w,
+                         "TAP SCREEN TO SELECT  |  ESC / MENU TO CLOSE",
+                         t.fg_dim, 1);
 }
 
 } // namespace chimera::ui

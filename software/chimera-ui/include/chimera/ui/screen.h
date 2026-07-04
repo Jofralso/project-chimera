@@ -73,6 +73,7 @@ public:
     chimera::Engine* engine() { return engine_; }
 
     virtual const KnobState* knobs() const { return nullptr; }
+    virtual KnobState* knobs() { return nullptr; }
     virtual int knob_count() const { return 0; }
 
     void set_header(const Canvas& canvas);
@@ -82,12 +83,20 @@ protected:
     std::string name_;
     chimera::Engine* engine_ = nullptr;
 
-    PulseState pulse_;  // shared pulse animation
+    PulseState pulse_;
 
     void draw_header(Canvas& canvas, const std::string& title,
                      const std::string& subtitle = "");
     void draw_knobs(Canvas& canvas, const KnobState* knobs, int count);
     void draw_footer(Canvas& canvas, const std::string& hint = "");
+
+    int hit_test_knob(int mx, int my) const;
+    void handle_knob_drag(int my);
+    void end_knob_drag();
+
+    int drag_knob_{-1};
+    int drag_start_y_{0};
+    float drag_start_value_{0.0f};
 
 private:
     void draw_knob(Canvas& canvas, int x, int y, const KnobState& k);

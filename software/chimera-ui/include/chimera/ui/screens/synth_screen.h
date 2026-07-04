@@ -25,7 +25,9 @@ public:
 
     void render(Canvas& canvas, bool active) override;
     void on_knob(int index, int delta) override;
+    void on_mouse(int mx, int my, int buttons) override;
     const KnobState* knobs() const override { return knobs_; }
+    KnobState* knobs() override { return knobs_; }
     int knob_count() const override { return 4; }
 
 private:

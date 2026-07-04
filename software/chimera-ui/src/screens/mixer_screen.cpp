@@ -1,4 +1,5 @@
 #include "chimera/ui/screens/mixer_screen.h"
+#include <SDL_events.h>
 #include <cstdio>
 #include <cmath>
 
@@ -147,6 +148,41 @@ void MixerScreen::on_key(int key, bool down) {
     switch (key) {
         case 202: selected_channel_ = (selected_channel_ - 1 + 4) % 4; break;
         case 203: selected_channel_ = (selected_channel_ + 1) % 4; break;
+    }
+}
+
+void MixerScreen::on_mouse(int mx, int my, int buttons) {
+    auto& t = theme();
+
+    if (buttons & SDL_BUTTON_LMASK) {
+        if (drag_knob_ < 0) {
+            drag_knob_ = hit_test_knob(mx, my);
+            if (drag_knob_ >= 0) {
+                drag_start_y_ = my;
+                drag_start_value_ = knobs()[drag_knob_].value;
+            }
+        }
+        if (drag_knob_ >= 0) {
+            handle_knob_drag(my);
+            apply_to_engine();
+            return;
+        }
+
+        int strip_y = t.header_h + t.padding;
+        int strip_h = 340;
+        int strip_w = (t.screen_w - 2 * t.padding - 3 * t.widget_spacing) / 4;
+
+        if (my >= strip_y && my < strip_y + strip_h) {
+            for (int i = 0; i < 4; ++i) {
+                int sx = t.padding + i * (strip_w + t.widget_spacing);
+                if (mx >= sx && mx < sx + strip_w) {
+                    selected_channel_ = i;
+                    break;
+                }
+            }
+        }
+    } else {
+        end_knob_drag();
     }
 }
 

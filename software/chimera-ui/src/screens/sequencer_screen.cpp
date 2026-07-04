@@ -211,6 +211,24 @@ void SequencerScreen::on_key(int key, bool down) {
 
 void SequencerScreen::on_mouse(int mx, int my, int buttons) {
     auto& t = theme();
+
+    if (buttons & SDL_BUTTON_LMASK) {
+        if (drag_knob_ < 0) {
+            drag_knob_ = hit_test_knob(mx, my);
+            if (drag_knob_ >= 0) {
+                drag_start_y_ = my;
+                drag_start_value_ = knobs()[drag_knob_].value;
+            }
+        }
+        if (drag_knob_ >= 0) {
+            handle_knob_drag(my);
+            apply_to_engine();
+            return;
+        }
+    } else {
+        end_knob_drag();
+    }
+
     int grid_x = t.padding + 40;
     int grid_y = t.header_h + t.padding;
     int cols = 16;

@@ -15,6 +15,19 @@ void Screen::draw_header(Canvas& canvas, const std::string& title,
         canvas.text_right(t.padding, t.padding, t.screen_w - 2 * t.padding,
                          subtitle, t.fg_dim);
     }
+
+    int menu_btn_x = t.screen_w - t.padding - 30;
+    int menu_btn_y = t.padding + 6;
+    int menu_btn_r = 10;
+    canvas.circle(menu_btn_x, menu_btn_y, menu_btn_r, t.fg, true);
+    canvas.circle(menu_btn_x, menu_btn_y, menu_btn_r - 2, t.bg, true);
+    canvas.circle(menu_btn_x, menu_btn_y, menu_btn_r - 2, t.fg);
+    for (int i = -4; i <= 4; i += 4) {
+        canvas.fill_rect(menu_btn_x + i - 1, menu_btn_y - 3, 2, 6, t.fg);
+    }
+    for (int i = -4; i <= 4; i += 4) {
+        canvas.fill_rect(menu_btn_x - 3, menu_btn_y + i - 1, 6, 2, t.fg);
+    }
 }
 
 void Screen::draw_footer(Canvas& canvas, const std::string& hint) {
@@ -50,12 +63,10 @@ void Screen::draw_knob(Canvas& canvas, int cx, int cy, const KnobState& k) {
     int r = t.knob_r;
     Color c = k.active ? t.fg : t.fg_dim;
 
-    // Knob circle
     canvas.circle(cx, cy, r, c);
     canvas.circle(cx, cy, r - t.knob_stroke, t.bg, true);
     canvas.circle(cx, cy, r - t.knob_stroke, c);
 
-    // Indicator line
     double angle = -135.0 + k.value * 270.0;
     double rad = angle * 3.14159 / 180.0;
     int line_len = r - t.knob_stroke - 2;
@@ -65,8 +76,51 @@ void Screen::draw_knob(Canvas& canvas, int cx, int cy, const KnobState& k) {
         canvas.set_pixel(px, py, k.active ? t.fg : t.fg_dim);
     }
 
-    // Label
     canvas.text_centered(cx - r, cy + r + t.padding, r * 2, k.label, c, 1);
+}
+
+int Screen::hit_test_knob(int mx, int my) const {
+    auto& t = theme();
+    const KnobState* knobs = this->knobs();
+    int count = this->knob_count();
+    if (!knobs || count == 0) return -1;
+
+    int knob_area_y = t.screen_h - t.footer_h;
+    int total_w = count * (t.knob_r * 2 + t.padding * 2);
+    int start_x = (t.screen_w - total_w) / 2;
+    if (start_x < t.padding) start_x = t.padding;
+
+    for (int i = 0; i < count; ++i) {
+        int kx = start_x + i * ((t.knob_r * 2) + t.padding * 2);
+        int ky = knob_area_y + t.padding;
+        int cx = kx + t.knob_r;
+        int cy = ky + t.knob_r + 8;
+        int dx = mx - cx;
+        int dy = my - cy;
+        if (dx * dx + dy * dy <= (t.knob_r + 4) * (t.knob_r + 4)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void Screen::handle_knob_drag(int my) {
+    if (drag_knob_ < 0 || drag_knob_ >= knob_count()) return;
+    KnobState* k = knobs();
+    if (!k) return;
+    int delta = drag_start_y_ - my;
+    float range = k[drag_knob_].max - k[drag_knob_].min;
+    float step = k[drag_knob_].step;
+    if (step <= 0.0f) step = range / 64.0f;
+    k[drag_knob_].value = drag_start_value_ + static_cast<float>(delta) * step;
+    if (k[drag_knob_].value < k[drag_knob_].min) k[drag_knob_].value = k[drag_knob_].min;
+    if (k[drag_knob_].value > k[drag_knob_].max) k[drag_knob_].value = k[drag_knob_].max;
+}
+
+void Screen::end_knob_drag() {
+    drag_knob_ = -1;
+    drag_start_y_ = 0;
+    drag_start_value_ = 0.0f;
 }
 
 void Screen::set_footer(Canvas& canvas) {
