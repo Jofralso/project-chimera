@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_plugin_host.dir/test_plugin_host.cpp.o -o test_plugin_host  -Wl,-rpath,/home/j3tson/project_chimera/build/deps/alsa/usr/lib/x86_64-linux-gnu ../software/audio-engine/libchimera_audio_engine.a -ldl /usr/lib/x86_64-linux-gnu/libdl.a ../deps/alsa/usr/lib/x86_64-linux-gnu/libasound.so 

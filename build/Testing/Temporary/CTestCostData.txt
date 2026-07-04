@@ -1,7 +1,0 @@
-test_audio_graph 9 0.000237914
-test_ring_buffer 8 0.000396078
-test_session 9 0.000347283
-test_plugin_abi 8 0.000158744
-test_nodes 9 0.000179012
-test_plugin_host 6 0.000335993
----

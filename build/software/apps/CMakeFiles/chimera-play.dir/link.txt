@@ -1,1 +1,0 @@
-/usr/bin/c++ "CMakeFiles/chimera-play.dir/chimera-play.cpp.o" -o chimera-play  -Wl,-rpath,/home/j3tson/project_chimera/build/deps/alsa/usr/lib/x86_64-linux-gnu ../audio-engine/libchimera_audio_engine.a /usr/lib/x86_64-linux-gnu/libdl.a ../../deps/alsa/usr/lib/x86_64-linux-gnu/libasound.so 
