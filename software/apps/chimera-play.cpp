@@ -22,6 +22,8 @@ int main(int argc, char** argv) {
     std::string backend = "auto";
     std::string device = "default";
     std::string wav_path;
+    std::string session_path;
+    bool capture_mode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -34,6 +36,10 @@ int main(int argc, char** argv) {
             if (channels < 1) channels = 1;
         } else if (arg == "--wav" && i + 1 < argc) {
             wav_path = argv[++i];
+        } else if (arg == "--session" && i + 1 < argc) {
+            session_path = argv[++i];
+        } else if (arg == "--capture") {
+            capture_mode = true;
         } else if (arg == "--device" && i + 1 < argc) {
             device = argv[++i];
         } else if (arg == "--alsa") {
@@ -46,6 +52,8 @@ int main(int argc, char** argv) {
             std::printf("  -f HZ       Test tone frequency (default: 440)\n");
             std::printf("  -c CH       Number of output channels (default: 2)\n");
             std::printf("  --wav FILE  Load and play a WAV file via sampler\n");
+            std::printf("  --session F Load and play a .chimera session file\n");
+            std::printf("  --capture   Audio passthrough (input -> output)\n");
             std::printf("  --device D  PCM device name (default: default)\n");
             std::printf("  --alsa      Force ALSA backend\n");
             std::printf("  --dummy     Force dummy backend\n");
@@ -59,49 +67,76 @@ int main(int argc, char** argv) {
     config.client_name = "Chimera Play";
     config.audio_device = device;
     config.num_outputs = channels;
+    if (capture_mode) config.num_inputs = channels;
 
     if (!engine.init(config)) {
         std::fprintf(stderr, "Failed to initialize engine\n");
         return 1;
     }
 
-    auto master = std::make_unique<chimera::MasterOutputNode>(channels);
-    chimera::NodeID master_id = engine.add_node(std::move(master));
-
-    chimera::NodeID source_id = 0;
-
-    if (!wav_path.empty()) {
-        auto sampler = std::make_unique<chimera::SamplerNode>();
-        if (!sampler->load_wav(wav_path)) {
-            std::fprintf(stderr, "Failed to load WAV: %s\n", wav_path.c_str());
+    if (!session_path.empty()) {
+        chimera::Session session;
+        if (!session.load(session_path)) {
+            std::fprintf(stderr, "Failed to load session: %s\n", session_path.c_str());
             return 1;
         }
-        sampler->set_loop(true);
-        sampler->trigger();
 
-        CHIMERA_INFO("Loaded '%s' (%u Hz, %u ch, %lu frames, looping)",
-                     wav_path.c_str(), sampler->sample_rate(),
-                     sampler->num_channels(),
-                     static_cast<unsigned long>(sampler->total_frames()));
-
-        auto gain = std::make_unique<chimera::GainNode>(2);
-        gain->set_gain(0.8f);
-
-        auto* sampler_ptr = sampler.get();
-        source_id = engine.add_node(std::move(sampler));
-        chimera::NodeID gain_id = engine.add_node(std::move(gain));
-
-        uint32_t ch = std::min(static_cast<uint32_t>(sampler_ptr->num_channels()), channels);
-        for (uint32_t c = 0; c < ch; ++c) {
-            engine.connect_nodes(source_id, c, gain_id, c);
-            engine.connect_nodes(gain_id, c, master_id, c);
+        engine.graph().clear();
+        if (!session.import_graph(engine.graph(), chimera::create_builtin_node)) {
+            std::fprintf(stderr, "Failed to import session graph\n");
+            return 1;
         }
-    } else {
-        auto tone = std::make_unique<chimera::TestToneNode>(frequency, 0.5f);
-        source_id = engine.add_node(std::move(tone));
+        engine.graph().prepare(config.sample_rate, config.block_size);
 
-        for (uint32_t ch = 0; ch < channels; ++ch) {
-            engine.connect_nodes(source_id, 0, master_id, ch);
+        CHIMERA_INFO("Loaded session '%s' (%s)", session.name().c_str(), session_path.c_str());
+    } else {
+        auto master = std::make_unique<chimera::MasterOutputNode>(channels);
+        chimera::NodeID master_id = engine.add_node(std::move(master));
+
+        if (capture_mode) {
+            auto input = std::make_unique<chimera::AudioInputNode>(channels);
+            chimera::NodeID input_id = engine.add_node(std::move(input));
+
+            for (uint32_t ch = 0; ch < channels; ++ch) {
+                engine.connect_nodes(input_id, ch, master_id, ch);
+            }
+
+            CHIMERA_INFO("Capture passthrough (%u ch)", channels);
+        } else if (!wav_path.empty()) {
+            auto sampler = std::make_unique<chimera::SamplerNode>();
+            if (!sampler->load_wav(wav_path)) {
+                std::fprintf(stderr, "Failed to load WAV: %s\n", wav_path.c_str());
+                return 1;
+            }
+            sampler->set_loop(true);
+            sampler->trigger();
+
+            CHIMERA_INFO("Loaded '%s' (%u Hz, %u ch, %lu frames, looping)",
+                         wav_path.c_str(), sampler->sample_rate(),
+                         sampler->num_channels(),
+                         static_cast<unsigned long>(sampler->total_frames()));
+
+            auto gain = std::make_unique<chimera::GainNode>(2);
+            gain->set_gain(0.8f);
+
+            auto* sampler_ptr = sampler.get();
+            chimera::NodeID sampler_id = engine.add_node(std::move(sampler));
+            chimera::NodeID gain_id = engine.add_node(std::move(gain));
+
+            uint32_t ch = std::min(static_cast<uint32_t>(sampler_ptr->num_channels()), channels);
+            for (uint32_t c = 0; c < ch; ++c) {
+                engine.connect_nodes(sampler_id, c, gain_id, c);
+                engine.connect_nodes(gain_id, c, master_id, c);
+            }
+        } else {
+            auto tone = std::make_unique<chimera::TestToneNode>(frequency, 0.5f);
+            chimera::NodeID tone_id = engine.add_node(std::move(tone));
+
+            for (uint32_t ch = 0; ch < channels; ++ch) {
+                engine.connect_nodes(tone_id, 0, master_id, ch);
+            }
+
+            CHIMERA_INFO("Playing %.1f Hz test tone", frequency);
         }
     }
 
