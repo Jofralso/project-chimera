@@ -6,6 +6,7 @@
 #include "chimera/backends/alsa_backend.h"
 #endif
 
+#include "chimera/nodes/drum_node.h"
 #include <cstring>
 #include <mutex>
 
@@ -233,6 +234,22 @@ void Engine::audio_callback(float** outputs, float** inputs, size_t num_frames) 
 
     std::lock_guard<std::mutex> lock(graph_mutex_);
     apply_pending_mutations();
+
+    // Advance step sequencer and push triggers to DrumNode
+    if (sequencer_enabled_ && transport_ == TransportState::Playing) {
+        transport_position_ += num_frames;
+        auto triggers = sequencer_.advance(transport_position_, config_.sample_rate);
+        if (!triggers.empty()) {
+            for (auto& [id, node] : graph_.all_nodes()) {
+                if (node->node_class() == "builtin.drum") {
+                    auto* drum = static_cast<DrumNode*>(node.get());
+                    for (auto& t : triggers) {
+                        drum->trigger(t.pad, t.velocity);
+                    }
+                }
+            }
+        }
+    }
 
     // Push capture input into AudioInputNode buffers
     for (auto& [id, node] : graph_.all_nodes()) {

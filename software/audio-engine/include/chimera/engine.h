@@ -3,6 +3,7 @@
 #include "audio_backend.h"
 #include "audio_graph.h"
 #include "ring_buffer.h"
+#include "nodes/step_sequencer.h"
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -95,6 +96,10 @@ public:
     double sample_rate() const { return config_.sample_rate; }
     size_t block_size() const { return config_.block_size; }
 
+    StepSequencer& sequencer() { return sequencer_; }
+    bool is_sequencer_enabled() const { return sequencer_enabled_; }
+    void enable_sequencer(bool enabled) { sequencer_enabled_ = enabled; }
+
     NodeID add_node(std::unique_ptr<AudioNode> node);
     bool remove_node(NodeID id);
     bool connect_nodes(NodeID src, size_t sp, NodeID dst, size_t dp);
@@ -113,6 +118,9 @@ private:
 
     TransportState transport_{TransportState::Stopped};
     std::atomic<uint64_t> transport_position_{0};
+
+    StepSequencer sequencer_;
+    bool sequencer_enabled_ = false;
 
     void process_control_messages();
     void apply_pending_mutations();

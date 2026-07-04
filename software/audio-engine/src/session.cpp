@@ -5,6 +5,7 @@
 #include "chimera/nodes/audio_io.h"
 #include "chimera/nodes/gain_node.h"
 #include "chimera/nodes/sampler_node.h"
+#include "chimera/nodes/drum_node.h"
 
 #include <chrono>
 #include <cstring>
@@ -31,6 +32,9 @@ std::unique_ptr<AudioNode> create_builtin_node(const std::string& node_class) {
     }
     if (node_class == "builtin.sampler") {
         return std::make_unique<SamplerNode>();
+    }
+    if (node_class == "builtin.drum") {
+        return std::make_unique<DrumNode>(0);
     }
     if (node_class.rfind("plugin:", 0) == 0) {
         return nullptr;

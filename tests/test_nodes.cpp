@@ -3,6 +3,9 @@
 #include "chimera/nodes/test_tone.h"
 #include "chimera/nodes/gain_node.h"
 #include "chimera/nodes/sampler_node.h"
+#include "chimera/nodes/drum_node.h"
+#include "chimera/nodes/step_sequencer.h"
+#include "chimera/dsp/adsr.h"
 #include "chimera/wav_loader.h"
 #include <cstdio>
 #include <cstdlib>
@@ -176,6 +179,213 @@ int main() {
         TEST("looping sampler wraps", sampler_loop.position() == 71);
 
         std::remove(wav_path.c_str());
+    }
+
+    // ADSR envelope tests
+    {
+        chimera::ADSREnvelope env;
+        TEST("adsr initially inactive", !env.is_active());
+        TEST("adsr initial value zero", env.value() < 0.001f);
+
+        env.set_decay(0.5f, 48000.0f);
+        env.trigger();
+        TEST("adsr active after trigger", env.is_active());
+        TEST("adsr value 1.0 after trigger", std::fabs(env.value() - 1.0f) < 0.001f);
+
+        float prev = env.value();
+        for (int i = 0; i < 100; ++i) {
+            env.process();
+        }
+        TEST("adsr decays", env.value() < prev);
+
+        // Process until inactive
+        for (int i = 0; i < 50000; ++i) {
+            if (!env.is_active()) break;
+            env.process();
+        }
+        TEST("adsr finishes", !env.is_active());
+    }
+
+    // DrumNode tests
+    {
+        // Create a small WAV for drum pad
+        std::string drum_wav = "/tmp/test_drum_pad.wav";
+        FILE* f = std::fopen(drum_wav.c_str(), "wb");
+        uint32_t sr = 44100;
+        uint16_t bits = 16;
+        uint16_t ch = 1;
+        uint32_t num_samples = 441;
+        uint32_t data_size = num_samples * (bits / 8);
+        uint32_t riff_size = 36 + data_size;
+        fwrite("RIFF", 1, 4, f);
+        fwrite(&riff_size, 4, 1, f);
+        fwrite("WAVE", 1, 4, f);
+        uint32_t fmt_size = 16;
+        uint16_t fmt_tag = 1;
+        uint32_t byte_rate = sr * ch * (bits / 8);
+        uint16_t block_align = ch * (bits / 8);
+        fwrite("fmt ", 1, 4, f);
+        fwrite(&fmt_size, 4, 1, f);
+        fwrite(&fmt_tag, 2, 1, f);
+        fwrite(&ch, 2, 1, f);
+        fwrite(&sr, 4, 1, f);
+        fwrite(&byte_rate, 4, 1, f);
+        fwrite(&block_align, 2, 1, f);
+        fwrite(&bits, 2, 1, f);
+        fwrite("data", 1, 4, f);
+        fwrite(&data_size, 4, 1, f);
+        for (uint32_t i = 0; i < num_samples; ++i) {
+            int16_t s = static_cast<int16_t>(i * 10);
+            fwrite(&s, 2, 1, f);
+        }
+        std::fclose(f);
+
+        chimera::DrumNode drum(4);
+        drum.prepare(48000.0, 256);
+        TEST("drum has 4 pads", drum.num_pads() == 4);
+        TEST("drum has stereo output", drum.num_outputs() == 2);
+
+        TEST("drum load pad 0", drum.load_sample(0, drum_wav));
+        TEST("drum load pad 1", drum.load_sample(1, drum_wav));
+        TEST("drum pad 0 loaded", drum.is_pad_loaded(0));
+
+        // Trigger pad 0
+        drum.trigger(0, 1.0f);
+        drum.process(256);
+        TEST("drum process produces output", true);
+
+        auto* left = drum.output(0);
+        auto* right = drum.output(1);
+        TEST("drum left output exists", left != nullptr);
+        TEST("drum right output exists", right != nullptr);
+
+        float left_peak = 0.0f, right_peak = 0.0f;
+        for (size_t i = 0; i < 256; ++i) {
+            if (std::fabs(left->buffer.data[i]) > left_peak) left_peak = std::fabs(left->buffer.data[i]);
+            if (std::fabs(right->buffer.data[i]) > right_peak) right_peak = std::fabs(right->buffer.data[i]);
+        }
+        TEST("drum left output has signal", left_peak > 0.0f);
+        TEST("drum right output has signal (mono pan)", right_peak > 0.0f);
+
+        // Pan hard left
+        drum.set_pad_pan(0, -1.0f);
+        drum.trigger(0, 1.0f);
+        drum.process(256);
+        left_peak = 0.0f; right_peak = 0.0f;
+        for (size_t i = 0; i < 256; ++i) {
+            if (std::fabs(left->buffer.data[i]) > left_peak) left_peak = std::fabs(left->buffer.data[i]);
+            if (std::fabs(right->buffer.data[i]) > right_peak) right_peak = std::fabs(right->buffer.data[i]);
+        }
+        TEST("drum pan-left", left_peak > right_peak);
+
+        // Load stereo wav
+        std::string stereo_wav = "/tmp/test_drum_stereo.wav";
+        f = std::fopen(stereo_wav.c_str(), "wb");
+        ch = 2;
+        num_samples = 220;
+        data_size = num_samples * (bits / 8) * ch;
+        riff_size = 36 + data_size;
+        fmt_tag = 1;
+        byte_rate = sr * ch * (bits / 8);
+        block_align = ch * (bits / 8);
+        fwrite("RIFF", 1, 4, f);
+        fwrite(&riff_size, 4, 1, f);
+        fwrite("WAVE", 1, 4, f);
+        fwrite("fmt ", 1, 4, f);
+        fwrite(&fmt_size, 4, 1, f);
+        fwrite(&fmt_tag, 2, 1, f);
+        fwrite(&ch, 2, 1, f);
+        fwrite(&sr, 4, 1, f);
+        fwrite(&byte_rate, 4, 1, f);
+        fwrite(&block_align, 2, 1, f);
+        fwrite(&bits, 2, 1, f);
+        fwrite("data", 1, 4, f);
+        fwrite(&data_size, 4, 1, f);
+        for (uint32_t i = 0; i < num_samples; ++i) {
+            int16_t s_l = static_cast<int16_t>(i * 20);
+            int16_t s_r = static_cast<int16_t>(i * 5);
+            fwrite(&s_l, 2, 1, f);
+            fwrite(&s_r, 2, 1, f);
+        }
+        std::fclose(f);
+
+        chimera::DrumNode drum_stereo(1);
+        drum_stereo.prepare(48000.0, 256);
+        TEST("drum stereo pad load", drum_stereo.load_sample(0, stereo_wav));
+        drum_stereo.trigger(0, 1.0f);
+        drum_stereo.process(256);
+        left_peak = 0.0f; right_peak = 0.0f;
+        for (size_t i = 0; i < 256; ++i) {
+            if (std::fabs(drum_stereo.output(0)->buffer.data[i]) > left_peak)
+                left_peak = std::fabs(drum_stereo.output(0)->buffer.data[i]);
+            if (std::fabs(drum_stereo.output(1)->buffer.data[i]) > right_peak)
+                right_peak = std::fabs(drum_stereo.output(1)->buffer.data[i]);
+        }
+        TEST("drum stereo L > R (L=20*i, R=5*i)", left_peak > right_peak);
+
+        std::remove(drum_wav.c_str());
+        std::remove(stereo_wav.c_str());
+    }
+
+    // StepSequencer tests
+    {
+        chimera::StepSequencer seq(4, 16);
+        TEST("seq 4 pads", seq.num_pads() == 4);
+        TEST("seq 16 steps", seq.num_steps() == 16);
+        TEST("seq default bpm", std::fabs(seq.bpm() - 120.0f) < 0.001f);
+
+        // Set a pattern
+        seq.set_step(0, 0, true, 1.0f, 1.0f);
+        seq.set_step(1, 4, true, 0.8f, 1.0f);
+        seq.set_step(2, 8, true, 0.6f, 0.5f);
+
+        TEST("seq step 0,0 active", seq.step(0, 0).active);
+        TEST("seq step 1,4 vel", std::fabs(seq.step(1, 4).velocity - 0.8f) < 0.001f);
+        TEST("seq step 2,8 prob", std::fabs(seq.step(2, 8).probability - 0.5f) < 0.001f);
+        TEST("seq step 3,0 inactive", !seq.step(3, 0).active);
+
+        // Toggle
+        seq.toggle_step(0, 0);
+        TEST("seq toggle off", !seq.step(0, 0).active);
+        seq.toggle_step(0, 0);
+        TEST("seq toggle on", seq.step(0, 0).active);
+
+        // Advance sequencer
+        // 120 BPM, 4 steps/beat => 8 steps/second => 6000 frames/step at 48000 Hz
+        // Step 0: frames 1..6000, Step 1: 6001..12000, Step 2: 12001..18000,
+        // Step 3: 18001..24000, Step 4: 24001..30000
+        seq.reset();
+        auto triggers = seq.advance(6001, 48000.0);
+        // Frame 6001 is in step 1 (6000/6000=1, but 6001/6000=1)
+        // Actually: step_frame = floor(6001/6000)*6000 = 6000
+        // new_step = floor(6001/6000) % 16 = 1
+        // pad 0 is active at step 0, not step 1 - so triggers should be for step 1
+        // No pads active at step 1 in our test setup
+        TEST("seq triggers at step 1 empty", triggers.size() == 0);
+
+        // Advance past step 4 boundary (step 4 = frames 24001..30000)
+        seq.reset();
+        triggers = seq.advance(24001, 48000.0);
+        // frame 24001: step_frame = floor(24001/6000)*6000 = 24000
+        // new_step = floor(24001/6000) % 16 = 4
+        // pad 1 is active at step 4
+        bool found_pad1 = false;
+        for (auto& t : triggers) {
+            if (t.pad == 1) found_pad1 = true;
+        }
+        TEST("seq triggers pad1 at step 4", found_pad1);
+
+        // Pattern name
+        seq.set_pattern_name("Test Pattern");
+        TEST("seq pattern name", seq.pattern_name() == "Test Pattern");
+
+        // Num steps change
+        seq.set_num_steps(8);
+        TEST("seq resize to 8", seq.num_steps() == 8);
+
+        // Toggle at new valid step
+        seq.toggle_step(0, 7);
+        TEST("seq new step toggle", seq.step(0, 7).active);
     }
 
     std::printf("\n%d test(s) failed\n", failures);

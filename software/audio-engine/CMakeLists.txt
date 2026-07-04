@@ -14,9 +14,11 @@ set(CHIMERA_AUDIO_ENGINE_SOURCES
   src/wav_loader.cpp
   src/backends/dummy_backend.cpp
   src/nodes/audio_io.cpp
+  src/nodes/drum_node.cpp
   src/nodes/gain_node.cpp
   src/nodes/master_output.cpp
   src/nodes/sampler_node.cpp
+  src/nodes/step_sequencer.cpp
   src/nodes/test_tone.cpp
 )
 
