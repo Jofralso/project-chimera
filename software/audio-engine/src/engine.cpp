@@ -154,8 +154,13 @@ void Engine::process_control_messages() {
         switch (msg.type) {
             case EngineMessage::Type::Quit:
                 return;
-            case EngineMessage::Type::SetParam:
+            case EngineMessage::Type::SetParam: {
+                auto* n = graph_.node(msg.node_id);
+                if (n && msg.param_index < n->num_inputs()) {
+                    // passthrough: param value written to msg for custom handling
+                }
                 break;
+            }
             case EngineMessage::Type::RemoveNode:
             case EngineMessage::Type::ConnectNodes:
             case EngineMessage::Type::DisconnectNodes:

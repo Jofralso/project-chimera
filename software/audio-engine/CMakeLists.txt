@@ -11,9 +11,12 @@ set(CHIMERA_AUDIO_ENGINE_SOURCES
   src/plugin_host.cpp
   src/port.cpp
   src/session.cpp
+  src/wav_loader.cpp
   src/backends/dummy_backend.cpp
   src/nodes/audio_io.cpp
+  src/nodes/gain_node.cpp
   src/nodes/master_output.cpp
+  src/nodes/sampler_node.cpp
   src/nodes/test_tone.cpp
 )
 
