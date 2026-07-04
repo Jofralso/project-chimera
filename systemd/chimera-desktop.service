@@ -1,0 +1,23 @@
+[Unit]
+Description=Chimera Desktop Audio Workstation
+After=graphical.target sound.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=jetson
+Group=jetson
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_AUDIODRIVER=alsa
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/usr/local/bin/chimera-desktop --touch --alsa
+Restart=on-failure
+RestartSec=2
+Slice=audio.slice
+CPUAffinity=0
+Nice=-20
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
+
+[Install]
+WantedBy=graphical.target

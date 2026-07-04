@@ -13,6 +13,7 @@ set(CHIMERA_AUDIO_ENGINE_SOURCES
   src/session.cpp
   src/wav_loader.cpp
   src/backends/dummy_backend.cpp
+  src/backends/null_backend.cpp
   src/nodes/audio_io.cpp
   src/nodes/drum_node.cpp
   src/nodes/gain_node.cpp
@@ -38,6 +39,7 @@ target_include_directories(chimera_audio_engine PRIVATE
 )
 
 chimera_set_realtime_flags(chimera_audio_engine)
+chimera_set_jetson_flags(chimera_audio_engine)
 chimera_no_rtti(chimera_audio_engine)
 
 find_library(DL_LIB dl)

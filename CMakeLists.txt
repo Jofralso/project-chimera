@@ -9,6 +9,13 @@ option(CHIMERA_BUILD_TESTS "Build test suite" ON)
 option(CHIMERA_BUILD_SDK_EXAMPLES "Build SDK examples" ON)
 option(CHIMERA_USE_JACK "Use JACK audio backend" ON)
 option(CHIMERA_USE_PIPEWIRE "Use PipeWire audio backend" OFF)
+option(CHIMERA_JETSON "Enable Jetson Orin Nano optimizations" OFF)
+
+if(CHIMERA_JETSON)
+  message(STATUS "Jetson Orin Nano optimizations enabled")
+  add_compile_definitions(CHIMERA_JETSON=1)
+  include(${CMAKE_SOURCE_DIR}/cmake/JetsonToolchain.cmake)
+endif()
 
 add_subdirectory(software/audio-engine)
 

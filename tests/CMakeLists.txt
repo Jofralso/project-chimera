@@ -4,6 +4,7 @@ function(add_chimera_test name source)
   add_executable(${name} ${source})
   target_link_libraries(${name} PRIVATE chimera_audio_engine)
   chimera_set_realtime_flags(${name})
+  chimera_set_jetson_flags(${name})
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

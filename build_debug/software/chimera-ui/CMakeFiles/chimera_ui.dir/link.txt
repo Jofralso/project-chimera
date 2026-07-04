@@ -1,2 +1,0 @@
-/usr/bin/ar qc libchimera_ui.a CMakeFiles/chimera_ui.dir/src/display.cpp.o CMakeFiles/chimera_ui.dir/src/screen.cpp.o CMakeFiles/chimera_ui.dir/src/midi_handler.cpp.o CMakeFiles/chimera_ui.dir/src/screens/synth_screen.cpp.o CMakeFiles/chimera_ui.dir/src/screens/drum_screen.cpp.o CMakeFiles/chimera_ui.dir/src/screens/sequencer_screen.cpp.o CMakeFiles/chimera_ui.dir/src/screens/mixer_screen.cpp.o CMakeFiles/chimera_ui.dir/src/screens/browser_screen.cpp.o
-/usr/bin/ranlib libchimera_ui.a

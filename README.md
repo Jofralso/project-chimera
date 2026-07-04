@@ -25,6 +25,8 @@ cmake --build build
 cd build && ctest
 ```
 
+For **Jetson Orin Nano** deployment, see [`docs/05_JETSON.md`](docs/05_JETSON.md).
+
 ## Requirements
 
 - CMake 3.25+

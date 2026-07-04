@@ -36,6 +36,13 @@ Display::~Display() {
 bool Display::init(const char* title, int scale) {
     scale_ = scale;
 
+    const char* sdl_driver = std::getenv("SDL_VIDEODRIVER");
+    if (!sdl_driver) {
+#ifdef CHIMERA_JETSON
+      setenv("SDL_VIDEODRIVER", "kmsdrm", 0);
+#endif
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return false;

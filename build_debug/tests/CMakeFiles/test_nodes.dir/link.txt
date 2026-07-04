@@ -1,1 +1,0 @@
-/usr/bin/c++ -g CMakeFiles/test_nodes.dir/test_nodes.cpp.o -o test_nodes  ../software/audio-engine/libchimera_audio_engine.a /usr/lib/x86_64-linux-gnu/libdl.a 

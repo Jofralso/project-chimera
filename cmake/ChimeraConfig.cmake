@@ -10,11 +10,24 @@ function(chimera_set_realtime_flags target)
       -ffast-math
     )
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
-      target_compile_options(${target} PRIVATE -flto)
+      target_compile_options(${target} PRIVATE -O3 -flto)
       target_link_options(${target} PRIVATE -flto)
     endif()
   elseif(MSVC)
     target_compile_options(${target} PRIVATE /W4 /wd4100)
+  endif()
+endfunction()
+
+function(chimera_set_jetson_flags target)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    target_compile_options(${target} PRIVATE
+      -march=armv8.2-a
+      -mtune=cortex-a78ae
+    )
+    target_link_options(${target} PRIVATE
+      -march=armv8.2-a
+      -mtune=cortex-a78ae
+    )
   endif()
 endfunction()
 

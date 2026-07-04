@@ -17,6 +17,7 @@ Commands:
   test            Run ctest in build dir
   play [args...]  Build (if needed) and run chimera-play with given args
   desktop [args...]  Build (if needed) and run chimera-desktop with given args
+  jetson [args...]   Build + run optimized for Jetson Orin Nano
   all             build + test
   help            Show this message
 
@@ -64,6 +65,26 @@ run_desktop() {
   exec "$bin" "$@"
 }
 
+run_jetson() {
+  echo "Building for Jetson Orin Nano..."
+  local jetson_dir="${BUILD_DIR}-jetson"
+  mkdir -p "$jetson_dir"
+  if [ ! -f "$jetson_dir/Makefile" ]; then
+    cmake -S "$PROJ_ROOT" -B "$jetson_dir" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCHIMERA_JETSON=ON \
+      -DCMAKE_TOOLCHAIN_FILE="$PROJ_ROOT/cmake/JetsonToolchain.cmake" \
+      "$@"
+  fi
+  cmake --build "$jetson_dir" -- -j"$(nproc)"
+  echo ""
+  echo "Jetson build complete: $jetson_dir/software/apps/chimera-desktop"
+  echo ""
+  echo "To run on device:"
+  echo "  export SDL_VIDEODRIVER=kmsdrm"
+  echo "  $jetson_dir/software/apps/chimera-desktop --touch --alsa"
+}
+
 if [ $# -lt 1 ]; then
   usage
   exit 1
@@ -86,6 +107,9 @@ case "$cmd" in
     ;;
   desktop)
     run_desktop "$@"
+    ;;
+  jetson)
+    run_jetson "$@"
     ;;
   all)
     cmake_config
