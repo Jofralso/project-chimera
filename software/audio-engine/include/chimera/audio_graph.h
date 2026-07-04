@@ -26,6 +26,8 @@ public:
     NodeID add_node(std::unique_ptr<AudioNode> node);
     AudioNode* node(NodeID id);
     const AudioNode* node(NodeID id) const;
+    AudioNode* find_node_by_class(const std::string& node_class);
+    const AudioNode* find_node_by_class(const std::string& node_class) const;
 
     bool connect(NodeID source, size_t source_port, NodeID target, size_t target_port);
     bool disconnect(NodeID source, size_t source_port, NodeID target, size_t target_port);
@@ -41,6 +43,7 @@ public:
     void clear();
 
     std::vector<NodeID> all_node_ids() const;
+    std::unordered_map<NodeID, std::unique_ptr<AudioNode>>& all_nodes() { return nodes_; }
     const std::unordered_map<NodeID, std::unique_ptr<AudioNode>>& all_nodes() const { return nodes_; }
 
     std::vector<NodeID> processing_order() const;

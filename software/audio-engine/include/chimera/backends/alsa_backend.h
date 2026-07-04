@@ -39,10 +39,13 @@ private:
     std::string device_ = "default";
 
     void* pcm_handle_ = nullptr;
+    void* capture_handle_ = nullptr;
 
     void thread_func();
     bool open_device();
+    bool open_capture_device();
     void close_device();
+    void close_capture_device();
 };
 
 } // namespace chimera

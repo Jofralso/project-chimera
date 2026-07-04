@@ -91,7 +91,23 @@ void Engine::stop() {
     send_message(msg);
 
     state_.store(EngineState::Idle);
+    transport_ = TransportState::Stopped;
+    transport_position_ = 0;
     CHIMERA_INFO("Engine stopped");
+}
+
+void Engine::pause() {
+    if (state_.load() != EngineState::Running) return;
+    state_.store(EngineState::Paused);
+    transport_ = TransportState::Paused;
+    CHIMERA_INFO("Engine paused");
+}
+
+void Engine::resume() {
+    if (state_.load() != EngineState::Paused) return;
+    state_.store(EngineState::Running);
+    transport_ = TransportState::Playing;
+    CHIMERA_INFO("Engine resumed");
 }
 
 bool Engine::send_message(const EngineMessage& msg) {
@@ -205,13 +221,11 @@ void Engine::audio_callback_bridge(float** outputs, float** inputs,
     engine->audio_callback(outputs, inputs, num_frames);
 }
 
-void Engine::audio_callback(float** outputs, float**, size_t num_frames) {
+void Engine::audio_callback(float** outputs, float** inputs, size_t num_frames) {
     if (state_.load() != EngineState::Running) {
         if (outputs) {
             for (size_t ch = 0; ch < config_.num_outputs; ++ch) {
-                if (outputs[ch]) {
-                    std::memset(outputs[ch], 0, num_frames * sizeof(float));
-                }
+                if (outputs[ch]) std::memset(outputs[ch], 0, num_frames * sizeof(float));
             }
         }
         return;
@@ -219,13 +233,39 @@ void Engine::audio_callback(float** outputs, float**, size_t num_frames) {
 
     std::lock_guard<std::mutex> lock(graph_mutex_);
     apply_pending_mutations();
+
+    // Push capture input into AudioInputNode buffers
+    for (auto& [id, node] : graph_.all_nodes()) {
+        if (node->node_class() == "builtin.audio_input" && inputs) {
+            size_t ch = 0;
+            for (size_t c = 0; c < node->num_outputs() && c < config_.num_inputs; ++c) {
+                if (inputs[c] && node->output(c) && node->output(c)->buffer.data) {
+                    std::memcpy(node->output(c)->buffer.data, inputs[c],
+                                num_frames * sizeof(float));
+                    ch++;
+                }
+            }
+        }
+    }
+
     graph_.process(num_frames);
 
-    if (outputs) {
+    // Route MasterOutputNode processed audio to backend outputs
+    auto master = graph_.find_node_by_class("builtin.master_output");
+    if (master && outputs) {
         for (size_t ch = 0; ch < config_.num_outputs; ++ch) {
             if (outputs[ch]) {
-                std::memset(outputs[ch], 0, num_frames * sizeof(float));
+                if (ch < master->num_inputs() && master->input(ch) && master->input(ch)->buffer.data) {
+                    std::memcpy(outputs[ch], master->input(ch)->buffer.data,
+                                num_frames * sizeof(float));
+                } else {
+                    std::memset(outputs[ch], 0, num_frames * sizeof(float));
+                }
             }
+        }
+    } else if (outputs) {
+        for (size_t ch = 0; ch < config_.num_outputs; ++ch) {
+            if (outputs[ch]) std::memset(outputs[ch], 0, num_frames * sizeof(float));
         }
     }
 }

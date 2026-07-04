@@ -27,6 +27,20 @@ const AudioNode* AudioGraph::node(NodeID id) const {
     return it != nodes_.end() ? it->second.get() : nullptr;
 }
 
+AudioNode* AudioGraph::find_node_by_class(const std::string& node_class) {
+    for (auto& [id, node] : nodes_) {
+        if (node->node_class() == node_class) return node.get();
+    }
+    return nullptr;
+}
+
+const AudioNode* AudioGraph::find_node_by_class(const std::string& node_class) const {
+    for (auto& [id, node] : nodes_) {
+        if (node->node_class() == node_class) return node.get();
+    }
+    return nullptr;
+}
+
 bool AudioGraph::connect(NodeID source_id, size_t source_port,
                          NodeID target_id, size_t target_port) {
     auto* src = node(source_id);

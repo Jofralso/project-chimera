@@ -24,7 +24,15 @@ enum class EngineState {
     Uninitialized,
     Idle,
     Running,
+    Paused,
     Error
+};
+
+enum class TransportState : uint8_t {
+    Stopped,
+    Playing,
+    Paused,
+    Loop
 };
 
 struct EngineMessage {
@@ -61,9 +69,19 @@ public:
 
     bool start();
     void stop();
+    void pause();
+    void resume();
 
     EngineState state() const { return state_.load(); }
     const EngineConfig& config() const { return config_; }
+
+    // Transport
+    TransportState transport() const { return transport_; }
+    void set_transport(TransportState ts) { transport_ = ts; }
+    uint64_t transport_position() const { return transport_position_; }
+    void set_transport_position(uint64_t pos) { transport_position_ = pos; }
+    bool loop() const { return transport_ == TransportState::Loop; }
+    void set_loop(bool l) { transport_ = l ? TransportState::Loop : TransportState::Playing; }
 
     AudioGraph& graph() { return graph_; }
     const AudioGraph& graph() const { return graph_; }
@@ -92,6 +110,9 @@ private:
     RingBuffer<EngineMessage> reply_queue_{4096};
 
     std::unique_ptr<AudioBackend> backend_;
+
+    TransportState transport_{TransportState::Stopped};
+    std::atomic<uint64_t> transport_position_{0};
 
     void process_control_messages();
     void apply_pending_mutations();

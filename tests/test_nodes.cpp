@@ -1,9 +1,13 @@
 #include "chimera/audio_graph.h"
 #include "chimera/nodes/master_output.h"
 #include "chimera/nodes/test_tone.h"
+#include "chimera/nodes/gain_node.h"
+#include "chimera/nodes/sampler_node.h"
+#include "chimera/wav_loader.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cstring>
 
 static int failures = 0;
 
@@ -89,6 +93,89 @@ int main() {
                      std::fabs(in->buffer.data[0] - 1.0f) < 0.001f);
             }
         }
+    }
+
+    {
+        chimera::GainNode gain(2);
+        gain.prepare(48000.0, 256);
+
+        for (size_t i = 0; i < 256; ++i) {
+            gain.input(0)->buffer.data[i] = 0.5f;
+        }
+
+        // Ramp from 1.0 to 0.0 over 256 frames → last frame reaches 0
+        gain.set_gain(0.0f);
+        gain.process(256);
+        TEST("gain ramps end near zero", std::fabs(gain.output(0)->buffer.data[255]) < 0.001f);
+
+        // Already at 0, set to 2.0 and process again
+        // Halfway through the ramp, output should be > 0
+        gain.set_gain(2.0f);
+        gain.process(256);
+        TEST("gain ramps up", gain.output(0)->buffer.data[255] > 0.9f);
+    }
+
+    {
+        // Create a small WAV for sampler test
+        std::string wav_path = "/tmp/test_sampler_unit.wav";
+        FILE* f = std::fopen(wav_path.c_str(), "wb");
+        uint32_t sr = 44100;
+        uint16_t bits = 16;
+        uint16_t ch = 1;
+        uint32_t num_samples = 441;
+        uint32_t data_size = num_samples * (bits / 8);
+        uint32_t riff_size = 36 + data_size;
+        fwrite("RIFF", 1, 4, f);
+        fwrite(&riff_size, 4, 1, f);
+        fwrite("WAVE", 1, 4, f);
+        uint32_t fmt_size = 16;
+        uint16_t fmt_tag = 1;
+        uint32_t byte_rate = sr * ch * (bits / 8);
+        uint16_t block_align = ch * (bits / 8);
+        fwrite("fmt ", 1, 4, f);
+        fwrite(&fmt_size, 4, 1, f);
+        fwrite(&fmt_tag, 2, 1, f);
+        fwrite(&ch, 2, 1, f);
+        fwrite(&sr, 4, 1, f);
+        fwrite(&byte_rate, 4, 1, f);
+        fwrite(&block_align, 2, 1, f);
+        fwrite(&bits, 2, 1, f);
+        fwrite("data", 1, 4, f);
+        fwrite(&data_size, 4, 1, f);
+        for (uint32_t i = 0; i < num_samples; ++i) {
+            int16_t s = static_cast<int16_t>(i * 10);
+            fwrite(&s, 2, 1, f);
+        }
+        std::fclose(f);
+
+        chimera::SamplerNode sampler;
+        TEST("load wav succeeds", sampler.load_wav(wav_path));
+        TEST("sampler sample rate", sampler.sample_rate() == 44100);
+        TEST("sampler channels", sampler.num_channels() == 1);
+        TEST("sampler frames", sampler.total_frames() == 441);
+        TEST("sampler not playing initially", !sampler.is_playing());
+
+        sampler.prepare(48000.0, 256);
+        sampler.trigger();
+        TEST("sampler playing after trigger", sampler.is_playing());
+
+        sampler.process(256);
+        TEST("sampler advanced position", sampler.position() > 0);
+
+        sampler.set_loop(true);
+
+        // Process past end with loop
+        chimera::SamplerNode sampler_loop;
+        sampler_loop.load_wav(wav_path);
+        sampler_loop.prepare(48000.0, 256);
+        sampler_loop.set_loop(true);
+        sampler_loop.trigger();
+        // Call process twice: 256 + 256 = 512 frames, 441-sample file loops once
+        sampler_loop.process(256);
+        sampler_loop.process(256);
+        TEST("looping sampler wraps", sampler_loop.position() == 71);
+
+        std::remove(wav_path.c_str());
     }
 
     std::printf("\n%d test(s) failed\n", failures);

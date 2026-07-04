@@ -53,9 +53,8 @@ void SamplerNode::process(size_t num_frames) {
     if (!playing_ || sample_data_.empty()) return;
 
     size_t ch = std::min(static_cast<size_t>(num_channels_), out_ch);
-    uint64_t remain = total_frames_ - position_;
 
-    for (size_t i = 0; i < num_frames && remain > 0; ++i) {
+    for (size_t i = 0; i < num_frames; ++i) {
         if (position_ >= total_frames_) {
             if (loop_) {
                 position_ = 0;
@@ -75,7 +74,6 @@ void SamplerNode::process(size_t num_frames) {
             }
         }
         position_++;
-        remain--;
     }
 }
 
