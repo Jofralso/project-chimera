@@ -36,15 +36,30 @@ Display::~Display() {
 bool Display::init(const char* title, int scale) {
     scale_ = scale;
 
-    const char* sdl_driver = std::getenv("SDL_VIDEODRIVER");
-    if (!sdl_driver) {
 #ifdef CHIMERA_JETSON
+    if (!std::getenv("SDL_VIDEODRIVER")) {
       setenv("SDL_VIDEODRIVER", "kmsdrm", 0);
-#endif
     }
+#endif
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+        if (std::getenv("SDL_VIDEODRIVER")) {
+            std::fprintf(stderr, "Hint: SDL_VIDEODRIVER=%s failed.\n",
+                         std::getenv("SDL_VIDEODRIVER"));
+#ifdef CHIMERA_JETSON
+            std::fprintf(stderr,
+                "Try: unset SDL_VIDEODRIVER   (auto-detect)\n"
+                "     export SDL_VIDEODRIVER=x11\n"
+                "     export SDL_VIDEODRIVER=wayland\n"
+                "     export SDL_VIDEODRIVER=directfb   (needs libdirectfb-dev)\n"
+                "     export SDL_VIDEODRIVER=fbcon      (fallback)\n"
+                "\n"
+                "Note: kmsdrm requires running locally on the Jetson console\n"
+                "      (not over SSH) or with sudo for DRM master access.\n"
+            );
+#endif
+        }
         return false;
     }
 

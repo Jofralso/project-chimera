@@ -61,18 +61,32 @@ chimera-play --seq --alsa --drum-bpm 128
 
 ## Display Drivers
 
-Chimera auto-sets `SDL_VIDEODRIVER=kmsdrm` when built with `-DCHIMERA_JETSON=ON`. This gives direct DRM/KMS rendering without X11.
+Chimera auto-sets `SDL_VIDEODRIVER=kmsdrm` when built with `-DCHIMERA_JETSON=ON`.
+This gives direct DRM/KMS rendering without X11 — **but only when running locally
+on the Jetson console or via sudo.**
 
 | Driver | When to use | Notes |
 |---|---|---|
-| `kmsdrm` | Default on Jetson | Direct DRM/KMS, hardware accelerated |
-| `directfb` | If kmsdrm fails | Requires `libdirectfb-dev` |
+| `kmsdrm` | Local console (not SSH), or via sudo | Direct DRM/KMS, hardware accelerated |
+| `x11` | Over SSH with X forwarding, or under GDM/LightDM | Runs as a window inside the desktop |
+| `wayland` | If running under a Wayland compositor | Weston, GNOME, etc. |
+| `directfb` | If kmsdrm/x11/wayland fail | Requires `libdirectfb-dev` |
 | `fbcon` | Last resort | Pure framebuffer, no acceleration |
 
-Force a driver:
+If `kmsdrm` fails with `SDL_Init failed: kmsdrm not available`, the exact fix
+depends on how you are accessing the Jetson:
+
 ```bash
-export SDL_VIDEODRIVER=directfb
-chimera-desktop --touch --alsa
+# If running over SSH (most common cause):
+export SDL_VIDEODRIVER=x11
+chimera-desktop --touch --alsa --scale 3
+
+# If running locally on the Jetson's own desktop:
+# Just run it normally — kmsdrm should work automatically
+
+# To auto-detect the best available driver:
+unset SDL_VIDEODRIVER
+chimera-desktop --touch --alsa --scale 3
 ```
 
 ## Touchscreen
