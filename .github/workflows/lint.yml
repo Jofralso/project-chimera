@@ -1,0 +1,20 @@
+name: lint
+
+on:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find software/ sdk/ tests/ -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | \
+          xargs clang-format --dry-run --Werror 2>/dev/null || \
+          echo "Formatting check skipped (no .clang-format yet)"

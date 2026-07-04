@@ -1,0 +1,40 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: cd build && ctest --output-on-failure
+
+      - name: Package
+        run: |
+          mkdir -p chimera-release/lib chimera-release/include
+          cp build/software/audio-engine/libchimera_audio_engine.a chimera-release/lib/
+          cp -r sdk/include/* chimera-release/include/
+          tar czf chimera-${GITHUB_REF_NAME}.tar.gz chimera-release/
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: chimera-${{ github.ref_name }}
+          path: chimera-*.tar.gz
